@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <!doctype html>
 <html lang="pt-br">
 <head>
@@ -98,3 +99,103 @@
   <script src="app.js" defer></script>
 </body>
 </html>
+=======
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>Orçamento Transportadora</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Maps JS + Places: mantém sua CHAVE e o callback=initOrcamento -->
+  <script async
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAhGvrR_Gp4e0ROB1BInjNBSUQdHEh6ews&libraries=places&v=weekly&callback=initOrcamento">
+  </script>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero glass">
+      <div class="brand">
+        <div class="logo">DE</div>
+        <div class="title">
+          <h1>Deodato Transportes</h1>
+          <p>Orçamento rápido com endereços do Google</p>
+        </div>
+      </div>
+      <a class="cta" id="btnWhats" href="#" target="_blank" rel="noopener" aria-disabled="true">
+        Enviar no WhatsApp
+      </a>
+    </header>
+
+    <main class="grid">
+      <section class="card glass">
+        <h2>Endereços</h2>
+
+        <div class="field">
+          <label for="origem">Retirada</label>
+          <input id="origem" type="text" placeholder="Digite o endereço de retirada" autocomplete="off" />
+        </div>
+
+        <div id="paradas"></div>
+        <button class="ghost" id="btnAddParada" type="button">+ Adicionar parada</button>
+
+        <div class="field">
+          <label for="destino">Entrega</label>
+          <input id="destino" type="text" placeholder="Digite o endereço de entrega" autocomplete="off" />
+        </div>
+
+        <div class="row">
+          <div class="field small">
+            <label for="servico">Serviço</label>
+            <select id="servico">
+              <option value="moto">Motoboy</option>
+              <option value="carro">Carro</option>
+              <option value="fiorino">Fiorino</option>
+            </select>
+          </div>
+          <div class="field small">
+            <label for="peso">Peso (kg)</label>
+            <input id="peso" type="number" min="0" step="0.1" value="1" />
+          </div>
+        </div>
+
+        <button class="primary" id="btnCalcular" type="button">Calcular</button>
+      </section>
+
+      <aside class="card glass">
+        <h2>Resumo</h2>
+        <div id="resumo" class="resumo">
+          <div class="metric">
+            <span class="lbl">Distância</span>
+            <span class="val" id="mDist">—</span>
+          </div>
+          <div class="metric">
+            <span class="lbl">Valor</span>
+            <span class="val" id="mValor">—</span>
+          </div>
+
+          <div class="rules">
+            <h3>Regras do serviço</h3>
+            <ul>
+              <li>Baú máx.: 44 × 42 × 32 cm</li>
+              <li>Peso máx.: 20 kg</li>
+              <li>Espera: R$ 0,60/min após 15 min</li>
+            </ul>
+          </div>
+
+          <button class="outline" id="btnLimpar" type="button">Limpar tudo</button>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="foot">
+      <p>© Deodato Transportes — São Paulo • Atendimento seg–sex, 8h–19h</p>
+    </footer>
+  </div>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
+>>>>>>> d68ed2bde0a1d74ce0ed9a1a4ea20999c39c1bc5
