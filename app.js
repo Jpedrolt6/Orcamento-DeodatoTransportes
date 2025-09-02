@@ -6,56 +6,141 @@ let destinoPlace = null;
 const WHATS_NUM = "5511983297840"; // DDI+DDD+NÚMERO, só dígitos
 
 // ===== Estado das paradas =====
-let paradasPlaces = [];    // Places selecionados nas paradas
-let contadorParadas = 0;   // p/ gerar IDs únicos
+let paradasPlaces = [];
+let contadorParadas = 0;
 
-// ===== Economia: parâmetros ajustáveis (mais responsivo que antes) =====
-const MIN_CHARS       = 3;           // mínimo de letras para sugerir
-const DEBOUNCE_MS     = 450;         // espera sem digitar antes de consultar
-const MAX_PREDICTIONS = 4;           // máximo de itens na lista
-const COUNTRY_CODE    = "br";        // restringe ao Brasil
-const CACHE_TTL_MS    = 5 * 60 * 1000; // 5 min
+// ===== Economia: parâmetros ajustáveis =====
+const MIN_CHARS       = 3;
+const DEBOUNCE_MS     = 800;
+const MAX_PREDICTIONS = 4;
+const COUNTRY_CODE    = "br";
+const CACHE_TTL_MS    = 5 * 60 * 1000;
 
-// ===== Caches locais (memória) =====
-const predCache    = new Map(); // key: texto -> { ts, predictions }
-const detailsCache = new Map(); // key: placeId -> { ts, place }
+// ===== Caches locais =====
+const predCache    = new Map();
+const detailsCache = new Map();
+
+// ===== Favoritos locais (salvos por cliente no navegador) =====
+function loadFavoritos() {
+  try { return JSON.parse(localStorage.getItem("favoritosEnderecos") || "[]"); }
+  catch { return []; }
+}
+function saveFavoritos(arr) {
+  localStorage.setItem("favoritosEnderecos", JSON.stringify(arr));
+}
+function addFavorito(endereco) {
+  if (!endereco) return;
+  let favs = loadFavoritos();
+  if (!favs.includes(endereco)) {
+    favs.push(endereco);
+    saveFavoritos(favs);
+  }
+}
 
 // ===== Utils =====
 const fmtBRL = (v) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-// Tabela de preço
-function calcularPreco(km) {
-  const k = Number(km);
-  if (k <= 5.9) return 40;
-  if (k <= 12.0) return 45;
-  return 20 + (2 * k);
+// ---------- Regras de preço (MOTO) ----------
+function calcularPrecoMoto(kmInt, qtdParadas, pedagio = 0) {
+  let base = 0;
+  if (kmInt <= 5) {
+    base = 40;
+  } else if (kmInt <= 12) {
+    base = 45;
+  } else if (kmInt <= 85) {
+    base = 20 + (2 * kmInt);
+  } else {
+    base = 190 + (kmInt - 85) * 3;
+  }
+  const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 5; // moto: R$5 cada
+  const total = base + taxaParadas + (Number(pedagio) || 0);
+  return Math.max(0, Math.round(total));
 }
 
-// Mensagem estilo Whats (texto -> URL-encoded) — com SERVIÇO no topo
-function montarMensagem(origem, destino, km, valor, servicoTxt) {
-  const kmTxt = Number(km).toFixed(0); // inteiro (sem metros)
+// ---------- Regras de preço (CARRO) ----------
+function calcularPrecoCarro(kmInt, qtdParadas, pedagio = 0) {
+  let base = 0;
+
+  if (kmInt <= 12) {
+    base = 100; // 0–12 km
+  } else if (kmInt <= 19) {
+    base = 110; // 13–19 km
+  } else if (kmInt <= 33) {
+    base = 130; // 20–33 km
+  } else if (kmInt <= 69) {
+    base = 4.0 * kmInt; // 34–69 km → R$4,00 por km (ex.: 34km = 136)
+  } else {
+    // 70 km em diante:
+    // Até 69 km = 69 * 4 = 276
+    // Excedente = (kmInt - 69) * 4.5
+    base = 276 + (kmInt - 69) * 4.5;
+  }
+
+  // Carro: paradas adicionais = R$10 cada
+  const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 10;
+
+  const total = base + taxaParadas + (Number(pedagio) || 0);
+  return Math.max(0, Math.round(total));
+}
+
+// ---------- Monta mensagem de WhatsApp ----------
+function montarMensagem(origem, destino, kmInt, valor, servicoTxt, paradasList = []) {
   const linhas = [
-    `*SERVIÇO: ${servicoTxt}*`,
-    "",
     "*RETIRADA*",
     "📍 " + origem,
-    "",
+    ""
+  ];
+
+  if (paradasList.length) {
+    paradasList.forEach((p, i) => {
+      const end = p?.formatted_address || p?.description || "";
+      if (end) {
+        linhas.push(`*PARADA ${i + 1}*`, "📍 " + end, "");
+      }
+    });
+  }
+
+  linhas.push(
     "*ENTREGA*",
     "📍 " + destino,
     "",
-    "🛣️ *Km* " + kmTxt,
-    "💵 *R$* " + fmtBRL(valor)
-  ];
+    `*Tipo de veículo:* ${servicoTxt}`,
+    "",
+    "🛣️ Km " + kmInt,
+    "💵 " + fmtBRL(valor)
+  );
+
   return encodeURIComponent(linhas.join("\n"));
 }
 
-// ===== Debounce helper =====
+// ===================== debounce =====================
 function debounce(fn, wait = 300) {
   let t;
   return (...args) => {
     clearTimeout(t);
     t = setTimeout(() => fn(...args), wait);
   };
+}
+
+// ===================== geocode fallback =====================
+function geocodeByText(texto) {
+  return new Promise((resolve) => {
+    if (!texto || !window.google || !google.maps?.Geocoder) return resolve(null);
+    const geocoder = new google.maps.Geocoder();
+    geocoder.geocode(
+      { address: texto, componentRestrictions: { country: COUNTRY_CODE } },
+      (res, status) => {
+        if (status === "OK" && res?.[0]?.geometry?.location) {
+          resolve({
+            formatted_address: res[0].formatted_address,
+            geometry: { location: res[0].geometry.location }
+          });
+        } else {
+          resolve(null);
+        }
+      }
+    );
+  });
 }
 
 // ===================== Autocomplete "econômico" =====================
@@ -65,6 +150,8 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
   const acService  = new google.maps.places.AutocompleteService();
   const placesSvc  = new google.maps.places.PlacesService(document.createElement("div"));
   let sessionToken = new google.maps.places.AutocompleteSessionToken();
+
+  let activeIndex = -1; // item ativo no teclado
 
   // caixinha de sugestões
   const list = document.createElement("div");
@@ -91,15 +178,18 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
   window.addEventListener("scroll", positionList, true);
   inputEl.addEventListener("focus", positionList);
 
-  const hideList = () => { list.style.display = "none"; list.innerHTML = ""; };
+  const hideList = () => { list.style.display = "none"; list.innerHTML = ""; activeIndex = -1; };
   const showList = () => { list.style.display = "block"; };
 
   function renderPredictions(preds) {
     list.innerHTML = "";
+    activeIndex = -1;
     if (!preds || !preds.length) { hideList(); return; }
-    preds.slice(0, MAX_PREDICTIONS).forEach(p => {
+
+    preds.slice(0, MAX_PREDICTIONS).forEach((p) => {
       const item = document.createElement("button");
       item.type = "button";
+      item.className = "suggestions__item";
       Object.assign(item.style, {
         width: "100%",
         textAlign: "left",
@@ -111,8 +201,6 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
         cursor: "pointer",
         fontFamily: "inherit",
       });
-      item.addEventListener("mouseover", () => item.style.background = "rgba(255,255,255,.04)");
-      item.addEventListener("mouseout",  () => item.style.background = "transparent");
 
       item.innerHTML = `
         <div style="font-weight:600">${p.structured_formatting?.main_text || p.description}</div>
@@ -126,11 +214,23 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
         const finish = (place) => {
           inputEl.value = place.formatted_address || p.description;
           hideList();
-          sessionToken = new google.maps.places.AutocompleteSessionToken();
+          sessionToken = new google.maps.places.AutocompleteSessionToken(); // nova sessão
           onPlaceChosen(place);
         };
 
         if (fresh) { finish(fresh); return; }
+
+        if (p.place_id.startsWith("fav-")) {
+          geocodeByText(p.description).then((place) => {
+            if (place) {
+              detailsCache.set(p.place_id, { ts: Date.now(), place });
+              finish(place);
+            } else {
+              hideList();
+            }
+          });
+          return;
+        }
 
         placesSvc.getDetails({
           placeId: p.place_id,
@@ -156,23 +256,67 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
     const q = inputEl.value.trim();
     if (q.length < MIN_CHARS) { hideList(); return; }
 
+    // 1) Favoritos locais primeiro
+    const favs = loadFavoritos();
+    const matches = favs
+      .filter(f => f.toLowerCase().includes(q.toLowerCase()))
+      .map(f => ({
+        description: f,
+        structured_formatting: { main_text: f, secondary_text: "Favorito" },
+        place_id: "fav-" + f
+      }));
+
+    if (matches.length) {
+      renderPredictions(matches);
+      return;
+    }
+
+    // 2) Cache
     const cached = predCache.get(q);
     if (cached && (Date.now() - cached.ts < CACHE_TTL_MS)) {
       renderPredictions(cached.predictions);
       return;
     }
 
+    // 3) Google
     acService.getPlacePredictions({
       input: q,
       sessionToken,
-      componentRestrictions: { country: COUNTRY_CODE },
-      types: ["address"]
+      componentRestrictions: { country: COUNTRY_CODE }
     }, (predictions, status) => {
       if (status !== "OK" || !predictions?.length) { hideList(); return; }
       predCache.set(q, { ts: Date.now(), predictions });
       renderPredictions(predictions);
     });
   }, DEBOUNCE_MS);
+
+  // Navegação via teclado
+  inputEl.addEventListener("keydown", (ev) => {
+    const items = list.querySelectorAll("button");
+    if (!items.length) return;
+
+    if (ev.key === "ArrowDown") {
+      ev.preventDefault();
+      activeIndex = (activeIndex + 1) % items.length;
+      items.forEach((btn, i) => btn.classList.toggle("active", i === activeIndex));
+      items[activeIndex].scrollIntoView({ block: "nearest" });
+    }
+    else if (ev.key === "ArrowUp") {
+      ev.preventDefault();
+      activeIndex = (activeIndex - 1 + items.length) % items.length;
+      items.forEach((btn, i) => btn.classList.toggle("active", i === activeIndex));
+      items[activeIndex].scrollIntoView({ block: "nearest" });
+    }
+    else if (ev.key === "Enter") {
+      if (activeIndex >= 0) {
+        ev.preventDefault();
+        items[activeIndex].click();
+      }
+    }
+    else if (ev.key === "Escape") {
+      hideList();
+    }
+  });
 
   inputEl.addEventListener("input", requestPredictions);
   inputEl.addEventListener("blur", () => setTimeout(hideList, 150));
@@ -189,7 +333,6 @@ function configurarAutocomplete() {
     inputEl: origemInput,
     onPlaceChosen: (place) => { origemPlace = place; }
   });
-
   setupInputAutocomplete({
     inputEl: destinoInput,
     onPlaceChosen: (place) => { destinoPlace = place; }
@@ -199,7 +342,7 @@ function configurarAutocomplete() {
   btnAddParada.addEventListener("click", () => adicionarParadaInput());
 }
 
-// Cria um novo input de parada
+// ===================== Cria inputs de parada =====================
 function adicionarParadaInput() {
   const container = document.getElementById("paradas");
   const idx = contadorParadas++;
@@ -219,6 +362,26 @@ function adicionarParadaInput() {
   });
 }
 
+// ===================== Regras do serviço (UI dinâmica) =====================
+function updateRules(servico) {
+  const rulesList = document.querySelector(".rules ul");
+  if (!rulesList) return;
+
+  if (servico === "carro") {
+    // Para CARRO: remover baú/peso, deixar só a espera de carro
+    rulesList.innerHTML = `
+      <li>Espera: R$ 0,70/min após 20 min</li>
+    `;
+  } else {
+    // Para MOTO (e por enquanto FIORINO usa o mesmo padrão antigo)
+    rulesList.innerHTML = `
+      <li>Baú máx.: 44 × 42 × 32 cm</li>
+      <li>Peso máx.: 20 kg</li>
+      <li>Espera: R$ 0,60/min após 15 min</li>
+    `;
+  }
+}
+
 // ===================== Cálculo e UI =====================
 function configurarEventos() {
   const btnCalcular = document.getElementById("btnCalcular");
@@ -226,6 +389,13 @@ function configurarEventos() {
   const btnLimpar   = document.getElementById("btnLimpar");
   const mDistEl     = document.getElementById("mDist");
   const mValorEl    = document.getElementById("mValor");
+  const servicoSel  = document.getElementById("servico");
+
+  // atualizar regras na troca de serviço
+  if (servicoSel) {
+    updateRules(servicoSel.value);
+    servicoSel.addEventListener("change", () => updateRules(servicoSel.value));
+  }
 
   esconderWhats();
 
@@ -235,46 +405,91 @@ function configurarEventos() {
 
   btnLimpar.addEventListener("click", limparTudo);
 
-  btnCalcular.addEventListener("click", () => {
-    if (!window.google || (!google.maps?.DistanceMatrixService && !google.maps?.DirectionsService)) {
+  btnCalcular.addEventListener("click", async () => {
+    if (!window.google) {
       mDistEl.textContent  = "—";
       mValorEl.textContent = "—";
       esconderWhats();
       return;
     }
 
-    if (!origemPlace || !destinoPlace) {
+    const origemInput  = document.getElementById("origem");
+    const destinoInput = document.getElementById("destino");
+
+    if (!origemPlace?.geometry?.location && origemInput?.value) {
+      origemPlace = await geocodeByText(origemInput.value.trim());
+    }
+    if (!destinoPlace?.geometry?.location && destinoInput?.value) {
+      destinoPlace = await geocodeByText(destinoInput.value.trim());
+    }
+
+    // percorre inputs de paradas
+    const inputsParadas = Array.from(document.querySelectorAll('[id^="parada-"]'));
+    const paradasValidas = [];
+
+    for (let i = 0; i < inputsParadas.length; i++) {
+      const txt = inputsParadas[i].value?.trim();
+      if (!txt) continue;
+
+      let place = paradasPlaces[i];
+      if (!place?.geometry?.location) {
+        place = await geocodeByText(txt);
+        paradasPlaces[i] = place;
+      }
+      if (place?.geometry?.location) {
+        paradasValidas.push(place);
+      }
+    }
+
+    if (!origemPlace?.geometry?.location || !destinoPlace?.geometry?.location) {
       mDistEl.textContent  = "—";
       mValorEl.textContent = "—";
       esconderWhats();
       return;
     }
 
-    const waypoints = (paradasPlaces || [])
-      .filter(p => p && p.geometry && p.geometry.location)
-      .map(p => ({ location: p.geometry.location, stopover: true }));
+    const waypoints = paradasValidas.map(p => ({ location: p.geometry.location, stopover: true }));
 
-    const finalizarComKm = (km) => {
-      const valor = calcularPreco(km);
-      mDistEl.textContent  = `${km} km`;
+    const finalizarComKm = (kmInt) => {
+      const servico = servicoSel ? servicoSel.value : "moto";
+
+      const pedagioInput = document.getElementById("pedagio");
+      const pedagioVal = pedagioInput ? Number(pedagioInput.value || 0) : 0;
+
+      let valor = 0;
+      if (servico === "carro") {
+        valor = calcularPrecoCarro(kmInt, paradasValidas.length, pedagioVal);
+      } else if (servico === "moto") {
+        valor = calcularPrecoMoto(kmInt, paradasValidas.length, pedagioVal);
+      } else {
+        // provisório: fiorino ainda sem tabela -> usa moto até definirmos
+        valor = calcularPrecoMoto(kmInt, paradasValidas.length, pedagioVal);
+      }
+
+      mDistEl.textContent  = `${kmInt} km`;
       mValorEl.textContent = fmtBRL(valor);
 
-      const servicoSel = document.getElementById("servico");
       const servicoMap = { moto: "Moto", carro: "Carro", fiorino: "Fiorino" };
-      const servicoTxt = servicoMap[servicoSel.value] || "Serviço";
+      const servicoTxt = servicoMap[servico] || "Serviço";
 
       const textoURL = montarMensagem(
         origemPlace.formatted_address,
         destinoPlace.formatted_address,
-        km,
+        kmInt,
         valor,
-        servicoTxt
+        servicoTxt,
+        paradasValidas
       );
 
       btnWhats.href = `https://api.whatsapp.com/send?phone=${WHATS_NUM}&text=${textoURL}`;
       btnWhats.setAttribute("aria-disabled", "false");
       btnWhats.removeAttribute("tabindex");
       mostrarWhats();
+
+      // salva endereços usados como favoritos locais
+      addFavorito(origemPlace.formatted_address);
+      addFavorito(destinoPlace.formatted_address);
+      paradasValidas.forEach((p) => addFavorito(p.formatted_address || p.description));
     };
 
     if (waypoints.length > 0 && google.maps?.DirectionsService) {
@@ -288,10 +503,10 @@ function configurarEventos() {
       }, (res, status) => {
         if (status !== "OK" || !res?.routes?.[0]?.legs?.length) { esconderWhats(); return; }
         const totalMeters = res.routes[0].legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
-        const km = Math.round(totalMeters / 1000); // inteiro agora
-        finalizarComKm(km);
+        const kmInt = Math.round(totalMeters / 1000);
+        finalizarComKm(kmInt);
       });
-    } else {
+    } else if (google.maps?.DistanceMatrixService) {
       const svc = new google.maps.DistanceMatrixService();
       svc.getDistanceMatrix({
         origins:      [origemPlace.geometry.location],
@@ -301,9 +516,11 @@ function configurarEventos() {
         if (status !== "OK") { esconderWhats(); return; }
         const el = res?.rows?.[0]?.elements?.[0];
         if (!el || el.status !== "OK") { esconderWhats(); return; }
-        const km = Math.round(el.distance.value / 1000); // inteiro agora
-        finalizarComKm(km);
+        const kmInt = Math.round(el.distance.value / 1000);
+        finalizarComKm(kmInt);
       });
+    } else {
+      esconderWhats();
     }
   });
 
@@ -333,18 +550,26 @@ function configurarEventos() {
 
     const pesoInput = document.getElementById("peso");
     if (pesoInput) pesoInput.value = "1";
+    const pedagioInput = document.getElementById("pedagio");
+    if (pedagioInput) pedagioInput.value = "";
 
+    const mDistEl = document.getElementById("mDist");
+    const mValorEl = document.getElementById("mValor");
     mDistEl.textContent  = "—";
     mValorEl.textContent = "—";
 
     esconderWhats();
     origemInput.focus();
+
+    // ao limpar, atualiza regras conforme serviço atual
+    const servicoSel  = document.getElementById("servico");
+    if (servicoSel) updateRules(servicoSel.value);
   }
 }
 
 // ===================== Callback do Google =====================
 function initOrcamento() {
-  configurarAutocomplete();  
+  configurarAutocomplete();
   configurarEventos();
 }
 window.initOrcamento = initOrcamento;

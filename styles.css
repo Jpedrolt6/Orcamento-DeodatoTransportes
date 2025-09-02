@@ -195,12 +195,28 @@ body{
   box-shadow: var(--shadow);
 }
 .brand{display:flex; align-items:center; gap:14px}
-.logo{
-  width:44px; height:44px; border-radius: 12px;
-  background: linear-gradient(135deg,#00f5a0,#00d9f5);
-  display:grid; place-items:center; font-weight:800; color:#001d16;
-  box-shadow: 0 10px 24px rgba(0,255,200,.25);
+.logo {
+  width:44px; 
+  height:44px; 
+  border-radius: 12px;
+  background: linear-gradient(135deg,#ffffff,#5d5555);
+  display:flex; 
+  align-items:center; 
+  justify-content:center;
+  font-size: 39px; /* tamanho do ícone */
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgb(119, 139, 117);
 }
+.suggestions__item.active {
+  background: rgba(255,255,255,.12) !important;
+}
+
+.logo:hover {
+  transform: scale(1.5); /* cresce 20% */
+  box-shadow: 0 12px 28px rgba(0, 4, 255, 0.4); /* sombra mais forte no hover */
+}
+
 .title h1{margin:0; font-size: 20px; letter-spacing:.2px}
 .title p{margin:0; color: var(--muted); font-size: 13px}
 
