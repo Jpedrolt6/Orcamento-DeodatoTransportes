@@ -7,7 +7,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
-  <!-- Removido o script do Maps daqui para evitar corrida com initOrcamento -->
 </head>
 <body>
   <div class="wrap">
@@ -91,12 +90,13 @@
     </footer>
   </div>
 
-  <!-- 1) Seu app precisa definir window.initOrcamento primeiro -->
-  <script src="app.js?v=4" defer></script>
+  <!-- 1) Carrega seu app primeiro -->
+  <script src="app.js?v=7" defer></script>
 
-  <!-- 2) Depois carregamos o Maps; quando terminar ele chama initOrcamento -->
+  <!-- 2) Depois o Maps, que chama initOrcamento; força referer só com origem -->
   <script
-    defer
+    async defer
+    referrerpolicy="origin"
     src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAhGvrR_Gp4e0ROB1BInjNBSUQdHEh6ews&libraries=places&v=weekly&callback=initOrcamento">
   </script>
 </body>
