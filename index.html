@@ -7,23 +7,18 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
-  <!-- Maps JS + Places. O callback initOrcamento é definido em app.js -->
-  <script async
-    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAhGvrR_Gp4e0ROB1BInjNBSUQdHEh6ews&libraries=places&v=weekly&callback=initOrcamento">
-  </script>
+  <!-- Removido o script do Maps daqui para evitar corrida com initOrcamento -->
 </head>
 <body>
   <div class="wrap">
     <header class="hero glass">
       <div class="brand">
         <div class="logo">📦</div>
-
         <div class="title">
           <h1>Deodato Transportes</h1>
           <p>Orçamento rápido com endereços do Google</p>
         </div>
       </div>
-      <!-- o botão do WhatsApp saiu daqui -->
     </header>
 
     <main class="grid">
@@ -34,11 +29,11 @@
           <label for="origem">Retirada</label>
           <input id="origem" type="text" placeholder="Digite o endereço de retirada" autocomplete="off" />
         </div>
-        
 
         <div id="paradas"></div>
-        
+
         <button class="ghost" id="btnAddParada" type="button">+ Adicionar parada</button>
+
         <div class="field">
           <label for="destino">Entrega</label>
           <input id="destino" type="text" placeholder="Digite o endereço de entrega" autocomplete="off" />
@@ -59,7 +54,6 @@
           </div>
         </div>
 
-        <!-- ações: calcular (esquerda) e Whats (direita — começa escondido) -->
         <div class="actions">
           <button class="primary" id="btnCalcular" type="button">Calcular</button>
           <a class="cta wa hide" id="btnWhats" href="#" target="_blank" rel="noopener">Enviar no WhatsApp</a>
@@ -97,6 +91,13 @@
     </footer>
   </div>
 
-  <script src="app.js" defer></script>
+  <!-- 1) Seu app precisa definir window.initOrcamento primeiro -->
+  <script src="app.js?v=4" defer></script>
+
+  <!-- 2) Depois carregamos o Maps; quando terminar ele chama initOrcamento -->
+  <script
+    defer
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAhGvrR_Gp4e0ROB1BInjNBSUQdHEh6ews&libraries=places&v=weekly&callback=initOrcamento">
+  </script>
 </body>
 </html>
