@@ -342,3 +342,59 @@ button{
 .suggestions__item:hover{ background: rgba(255,255,255,.04); }
 .suggestions__main{font-weight:600}
 .suggestions__sec{font-size:12px; color:#a9b2c3}
+/* ==================== APPEND-ONLY: UI de sugestões e erros ==================== */
+
+/* Cores mais vivas na lista */
+.suggestions{ background:#0b1017; border-color:#233047; }
+.suggestions__item{ color:#eaf2ff; }
+.suggestions__item:hover{ background: rgba(255,255,255,.06); }
+.suggestions__item.active{ background: rgba(255,255,255,.10); }
+
+/* Tipografia do item */
+.suggestions__main{ font-weight:700; letter-spacing:.2px; }
+.suggestions__sec{ font-size:12px; color:#9fb0c8; }
+.suggestions__sep{ opacity:.6; margin:0 6px; }
+
+/* Destaque do termo digitado */
+.hl{
+  background: linear-gradient(90deg, rgb(255, 255, 255), rgb(255, 255, 255));
+  padding:0 2px; border-radius:4px;
+}
+
+/* Estrelinha dourada para favoritos */
+.suggestions .line{ display:flex; align-items:center; gap:8px; }
+.fav-ico{
+  width:14px; height:14px; color:#fcd34d;
+  flex:0 0 auto; margin-right:4px;
+  filter: drop-shadow(0 2px 6px rgba(252,211,77,.25));
+}
+
+/* Input inválido (quando o cliente não selecionou um lugar) */
+input.is-invalid{
+  border-color:#ef4444 !important;
+  box-shadow: 0 0 0 3px rgba(239,68,68,.2) !important;
+  animation: shake .18s linear 0s 2;
+}
+@keyframes shake{
+  0%{ transform:translateX(0) } 25%{ transform:translateX(-2px) }
+  50%{ transform:translateX(2px) } 75%{ transform:translateX(-1px) }
+  100%{ transform:translateX(0) }
+}
+
+/* Mensagem curtinha de erro (opcional) */
+.err-hint{
+  display:block; font-size:12px; color:#ffb4b4;
+  margin-top:6px; opacity:.95;
+}
+
+/* Pill “Adicionar número” com visual */
+.add-num-pill{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:6px 10px; border-radius:999px;
+  background:#102036; color:#cfe3ff; border:1px solid #274165;
+  font-size:12px; cursor:pointer; margin-top:6px;
+}
+.add-num-pill:hover{ background:#0f2744; }
+
+/* ===== (ajuste leve) separador na lista — o “traço clássico” ===== */
+.suggestions__sep::before{ content:"—"; }
