@@ -13,7 +13,7 @@ let contadorParadas = 0;
 const MIN_CHARS       = 3;
 const DEBOUNCE_MS     = 150;   // MAIS RÁPIDO
 const MAX_PREDICTIONS = 8;     // ↑ deixa espaço pra mostrar mais
-const MIN_SUGGESTIONS = 3;     // << mínimo garantido na caixinha
+const MIN_SUGGESTIONS = 3;     // mínimo desejado na caixinha
 const COUNTRY_CODE    = "br";
 const CACHE_TTL_MS    = 3 * 60 * 1000; // 3min
 
@@ -24,6 +24,16 @@ const detailsCache = new Map();
 // ===== Utils =====
 const fmtBRL = (v) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+// Detector de número de rua (evita confundir CEP)
+function hasStreetNumber(text) {
+  const s = String(text || "");
+  // vírgula ou espaço + 1-5 dígitos que NÃO são seguidos de hífen (ex.: evita 01234-567)
+  const padraoSimples = /(?:,\s*|\s+)\d{1,5}(?!-)\b/;
+  // formas tipo "nº 123", "n 123", "num 123"
+  const padraoAbrev   = /\b(n[ºo]?|nro\.?|num\.?)\s*\d{1,5}\b/i;
+  return padraoSimples.test(s) || padraoAbrev.test(s);
+}
+
 // ---------------------------------------------------------------------------
 //                        ✅ Places API (New) – REST
 // ---------------------------------------------------------------------------
@@ -33,7 +43,7 @@ const PLACES_BASE = "https://places.googleapis.com/v1";
 
 // Foco em São Paulo (viés geográfico p/ sugestões mais próximas)
 const SP_CENTER = { latitude: -23.55052, longitude: -46.633308 };
-const SP_BIAS   = { circle: { center: SP_CENTER, radius: 50000 } }; // ~75 km
+const SP_BIAS   = { circle: { center: SP_CENTER, radius: 50000 } }; // ~50 km
 
 // Field Masks: pedimos só o essencial (rápido e barato)
 const FM_AUTOCOMPLETE = [
@@ -232,11 +242,19 @@ function geocodeByText(texto) {
   });
 }
 
-// ===== Pill “Adicionar número” (piu) =====
+// ===== Pill “Adicionar número” (piu) — persistente =====
 function showAddNumeroHint(inputEl) {
   if (!inputEl) return;
   const container = (inputEl.closest(".field") || inputEl.parentElement || document.body);
-  if (container.querySelector(".add-num-pill-js") && !/\d{1,5}/.test(inputEl.value)) return;
+
+  // se já existe e ainda não tem número, não cria outra
+  if (container.querySelector(".add-num-pill-js") && !hasStreetNumber(inputEl.value)) return;
+
+  // se já tem número, apaga qualquer pill existente
+  if (hasStreetNumber(inputEl.value)) {
+    container.querySelector(".add-num-pill-js")?.remove();
+    return;
+  }
 
   const pill = document.createElement("button");
   pill.type = "button";
@@ -254,7 +272,9 @@ function showAddNumeroHint(inputEl) {
     Adicionar número
   `;
 
-  const removeIfHasNumber = () => { if (/\d{1,5}/.test(inputEl.value)) pill.remove(); };
+  const removeIfHasNumber = () => {
+    if (hasStreetNumber(inputEl.value)) pill.remove();
+  };
 
   pill.addEventListener("click", () => {
     if (!/,\s*$/.test(inputEl.value)) inputEl.value = inputEl.value.replace(/\s+$/, "") + ", ";
@@ -262,8 +282,10 @@ function showAddNumeroHint(inputEl) {
     inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
   });
 
+  // remove automaticamente quando o usuário digitar um número
   inputEl.addEventListener("input", removeIfHasNumber, { once: false });
-  setTimeout(() => pill.remove(), 10000);
+
+  // sem timeout — fica até o usuário digitar o número ou limpar o campo
   container.appendChild(pill);
 }
 
@@ -339,9 +361,9 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
 
         const finish = (place) => {
           inputEl.value = place.formatted_address || p.description;
-          // limpamos alerta + piu de número
+          // alerta e pill
           clearInvalid(inputEl);
-          if (!/\d{1,5}/.test(inputEl.value)) showAddNumeroHint(inputEl);
+          if (!hasStreetNumber(inputEl.value)) showAddNumeroHint(inputEl);
 
           hideList();
           sessionToken = newSessionToken();
@@ -380,7 +402,7 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
       return;
     }
 
-    // 2) Google (Places API New) — Autocomplete (com viés SP)
+    // 2) Autocomplete (com bias de SP)
     let norm = [];
     try {
       const data = await placesNewAutocomplete({
@@ -394,21 +416,22 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
       norm = [];
     }
 
-    // 3) Fallback “fuzzy”: se não veio nada, tenta SearchText
-    if (!norm.length) {
+    // 3) Fallback: SearchText
+    if (!norm.length || norm.length < MIN_SUGGESTIONS) {
       try {
         const st = await placesNewSearchText(q, "pt-BR");
-        norm = normalizeSearchToSuggestions(st);
-      } catch {
-        norm = [];
-      }
+        const extra = normalizeSearchToSuggestions(st);
+        // junta sem duplicar
+        const seen = new Set(norm.map(x => x.place_id));
+        for (const e of extra) if (!seen.has(e.place_id)) norm.push(e);
+      } catch {/* noop */}
     }
 
     predCache.set(q, { ts: Date.now(), predictions: norm });
     renderPredictions(norm);
   }, DEBOUNCE_MS);
 
-  // ====== Navegação via teclado (ENTER sempre escolhe o 1º se nenhum ativo) ======
+  // ====== Navegação via teclado (ENTER escolhe 1ª se nenhuma ativa) ======
   inputEl.addEventListener("keydown", (ev) => {
     const items = list.querySelectorAll("button.suggestions__item");
     if (ev.key === "ArrowDown" && items.length) {
@@ -424,7 +447,7 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
     } else if (ev.key === "Enter" && items.length) {
       ev.preventDefault();
       if (activeIndex >= 0) items[activeIndex].click();
-      else items[0].click(); // <<< pega o primeiro SEMPRE
+      else items[0].click(); // pega o primeiro SEMPRE
     } else if (ev.key === "Escape") {
       hideList();
     }
@@ -672,6 +695,9 @@ function configurarEventos() {
     const mValorEl = document.getElementById("mValor");
     mDistEl.textContent  = "—";
     mValorEl.textContent = "—";
+
+    // remove qualquer pill remanescente
+    document.querySelectorAll(".add-num-pill-js").forEach(el => el.remove());
 
     esconderWhats();
     origemInput.focus();
