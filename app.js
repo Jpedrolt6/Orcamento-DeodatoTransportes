@@ -24,12 +24,25 @@ const detailsCache = new Map();
 // ===== Utils =====
 const fmtBRL = (v) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+// ✅ Bloqueia UI nativa de validação que causa o “tranco”
+document.addEventListener('invalid', (e) => e.preventDefault(), true);
+
+// ✅ Evita que Enter dentro de input dispare “submit fantasma”
+function bloquearEnter(el) {
+  if (!el) return;
+  el.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') ev.preventDefault();
+  });
+}
+function aplicarBloqueioNosCamposBasicos() {
+  bloquearEnter(document.getElementById('origem'));
+  bloquearEnter(document.getElementById('destino'));
+}
+
 // Detector de número de rua (evita confundir CEP)
 function hasStreetNumber(text) {
   const s = String(text || "");
-  // vírgula ou espaço + 1-5 dígitos que NÃO são seguidos de hífen (ex.: evita 01234-567)
   const padraoSimples = /(?:,\s*|\s+)\d{1,5}(?!-)\b/;
-  // formas tipo "nº 123", "n 123", "num 123"
   const padraoAbrev   = /\b(n[ºo]?|nro\.?|num\.?)\s*\d{1,5}\b/i;
   return padraoSimples.test(s) || padraoAbrev.test(s);
 }
@@ -247,10 +260,8 @@ function showAddNumeroHint(inputEl) {
   if (!inputEl) return;
   const container = (inputEl.closest(".field") || inputEl.parentElement || document.body);
 
-  // se já existe e ainda não tem número, não cria outra
   if (container.querySelector(".add-num-pill-js") && !hasStreetNumber(inputEl.value)) return;
 
-  // se já tem número, apaga qualquer pill existente
   if (hasStreetNumber(inputEl.value)) {
     container.querySelector(".add-num-pill-js")?.remove();
     return;
@@ -282,10 +293,8 @@ function showAddNumeroHint(inputEl) {
     inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
   });
 
-  // remove automaticamente quando o usuário digitar um número
   inputEl.addEventListener("input", removeIfHasNumber, { once: false });
 
-  // sem timeout — fica até o usuário digitar o número ou limpar o campo
   container.appendChild(pill);
 }
 
@@ -361,7 +370,6 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
 
         const finish = (place) => {
           inputEl.value = place.formatted_address || p.description;
-          // alerta e pill
           clearInvalid(inputEl);
           if (!hasStreetNumber(inputEl.value)) showAddNumeroHint(inputEl);
 
@@ -395,14 +403,12 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
     const q = inputEl.value.trim();
     if (q.length < MIN_CHARS) { hideList(); return; }
 
-    // 1) Cache
     const cached = predCache.get(q);
     if (cached && (Date.now() - cached.ts < CACHE_TTL_MS)) {
       renderPredictions(cached.predictions);
       return;
     }
 
-    // 2) Autocomplete (com bias de SP)
     let norm = [];
     try {
       const data = await placesNewAutocomplete({
@@ -416,12 +422,10 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
       norm = [];
     }
 
-    // 3) Fallback: SearchText
     if (!norm.length || norm.length < MIN_SUGGESTIONS) {
       try {
         const st = await placesNewSearchText(q, "pt-BR");
         const extra = normalizeSearchToSuggestions(st);
-        // junta sem duplicar
         const seen = new Set(norm.map(x => x.place_id));
         for (const e of extra) if (!seen.has(e.place_id)) norm.push(e);
       } catch {/* noop */}
@@ -431,7 +435,7 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
     renderPredictions(norm);
   }, DEBOUNCE_MS);
 
-  // ====== Navegação via teclado (ENTER escolhe 1ª se nenhuma ativa) ======
+  // ====== Navegação via teclado ======
   inputEl.addEventListener("keydown", (ev) => {
     const items = list.querySelectorAll("button.suggestions__item");
     if (ev.key === "ArrowDown" && items.length) {
@@ -473,6 +477,9 @@ function configurarAutocomplete() {
   const origemInput  = document.getElementById("origem");
   const destinoInput = document.getElementById("destino");
 
+  // ✅ Bloqueia Enter nos inputs fixos
+  aplicarBloqueioNosCamposBasicos();
+
   setupInputAutocomplete({
     inputEl: origemInput,
     onPlaceChosen: (place) => { origemPlace = place; }
@@ -500,6 +507,10 @@ function adicionarParadaInput() {
   container.appendChild(wrap);
 
   const input = document.getElementById(`parada-${idx}`);
+
+  // ✅ Bloqueia Enter também nas paradas criadas dinamicamente
+  bloquearEnter(input);
+
   setupInputAutocomplete({
     inputEl: input,
     onPlaceChosen: (place) => { paradasPlaces[idx] = place; }
@@ -545,7 +556,10 @@ function configurarEventos() {
 
   btnLimpar.addEventListener("click", limparTudo);
 
-  btnCalcular.addEventListener("click", async () => {
+  btnCalcular.addEventListener("click", async (e) => {
+    // ✅ Blindagem extra contra qualquer submit/validação nativa
+    e.preventDefault();
+
     if (!window.google) {
       mDistEl.textContent  = "—";
       mValorEl.textContent = "—";
@@ -707,7 +721,7 @@ function configurarEventos() {
   }
 }
 
-// ===================== Validação (erro vermelho) =====================
+// ===================== Validação (utilitários) =====================
 function markInvalid(input, hintMsg){
   if(!input) return;
   input.classList.add('is-invalid');
@@ -732,51 +746,9 @@ function clearInvalid(input){
   if(hint && hint.classList?.contains('err-hint')) hint.remove();
 }
 
-// ===================== Callback do Google =====================
-function configurarEventosValidacao(){
-  const origemInput  = document.getElementById("origem");
-  const destinoInput = document.getElementById("destino");
-  const btnCalcular  = document.getElementById("btnCalcular");
-
-  if(!btnCalcular) return;
-
-  // Validação em captura
-  btnCalcular.addEventListener("click", function(){
-    try{
-      if(!(window.origemPlace && origemPlace.geometry && origemPlace.geometry.location)){
-        if (origemInput && origemInput.value.trim()) markInvalid(origemInput, 'Selecione a opção sugerida para a Retirada.');
-        else if (origemInput) markInvalid(origemInput, 'Informe o endereço de Retirada.');
-      } else { clearInvalid(origemInput); }
-
-      if(!(window.destinoPlace && destinoPlace.geometry && destinoPlace.geometry.location)){
-        if (destinoInput && destinoInput.value.trim()) markInvalid(destinoInput, 'Selecione a opção sugerida para a Entrega.');
-        else if (destinoInput) markInvalid(destinoInput, 'Informe o endereço de Entrega.');
-      } else { clearInvalid(destinoInput); }
-
-      const inputsParadas = Array.from(document.querySelectorAll('[id^="parada-"]'));
-      inputsParadas.forEach((inp, i)=>{
-        const temTexto = (inp.value||"").trim().length > 0;
-        const okPlace  = Array.isArray(window.paradasPlaces) && window.paradasPlaces[i]?.geometry?.location;
-        if(temTexto && !okPlace){ markInvalid(inp, 'Selecione uma das opções da lista.'); }
-        else { clearInvalid(inp); }
-      });
-    }catch{}
-  }, true);
-
-  // limpar ao digitar/focar
-  [origemInput, destinoInput].filter(Boolean).forEach(inp=>{
-    inp.addEventListener('input', ()=> clearInvalid(inp));
-    inp.addEventListener('focus', ()=> clearInvalid(inp));
-  });
-  document.addEventListener('input', (e)=>{
-    const el = e.target;
-    if(el && typeof el.id === 'string' && el.id.startsWith('parada-')) clearInvalid(el);
-  });
-}
-
+// ===================== Init =====================
 function initOrcamento() {
   configurarAutocomplete();
   configurarEventos();
-  configurarEventosValidacao();
 }
 window.initOrcamento = initOrcamento;
