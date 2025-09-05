@@ -44,18 +44,22 @@
             <select id="servico">
               <option value="moto">Motoboy</option>
               <option value="carro">Carro</option>
-
             </select>
           </div>
-          <div class="field small">
-            <label for="peso">Peso (kg)</label>
-            <input id="peso" type="number" min="0" step="0.1" value="1" />
+
+          <div class="field small" id="motoTipoRow">
+            <label for="motoTipo">Tipo (moto)</label>
+            <select id="motoTipo">
+              <option value="" selected disabled>Selecione…</option>
+              <option value="bau">Baú</option>
+              <option value="food">FOOD (mochila termica)</option>
+            </select>
           </div>
         </div>
 
         <div class="actions">
           <button class="primary" id="btnCalcular" type="button">Calcular</button>
-          <a class="cta wa hide" id="btnWhats" href="#" target="_blank" rel="noopener">Enviar no WhatsApp</a>
+          <a class="cta wa hide" id="btnWhats" href="#" target="_blank" rel="noopener">Enviar Orçamento no WhatsApp</a>
         </div>
       </section>
 
@@ -91,7 +95,7 @@
   </div>
 
   <!-- 1) Carrega seu app primeiro -->
-  <script src="app.js?v=7" defer></script>
+  <script src="app.js?v=8" defer></script>
 
   <!-- 2) Depois o Maps, que chama initOrcamento; força referer só com origem -->
   <script

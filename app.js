@@ -11,9 +11,9 @@ let contadorParadas = 0;
 
 // ===== Economia: parâmetros ajustáveis =====
 const MIN_CHARS       = 3;
-const DEBOUNCE_MS     = 150;   // MAIS RÁPIDO
-const MAX_PREDICTIONS = 8;     // ↑ deixa espaço pra mostrar mais
-const MIN_SUGGESTIONS = 3;     // mínimo desejado na caixinha
+const DEBOUNCE_MS     = 100;   // responsivo e econômico
+const MAX_PREDICTIONS = 8;
+const MIN_SUGGESTIONS = 1;
 const COUNTRY_CODE    = "br";
 const CACHE_TTL_MS    = 3 * 60 * 1000; // 3min
 
@@ -21,13 +21,16 @@ const CACHE_TTL_MS    = 3 * 60 * 1000; // 3min
 const predCache    = new Map();
 const detailsCache = new Map();
 
+// ===== Flag do último orçamento (para limpar endereços ao trocar Baú/Food) =====
+let lastQuote = { hasQuote: false, servico: null, motoTipo: null };
+
 // ===== Utils =====
 const fmtBRL = (v) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-// ✅ Bloqueia UI nativa de validação que causa o “tranco”
+// Bloqueia UI nativa de validação (evita tranco)
 document.addEventListener('invalid', (e) => e.preventDefault(), true);
 
-// ✅ Evita que Enter dentro de input dispare “submit fantasma”
+// Evita Enter dentro de input causar submit fantasma
 function bloquearEnter(el) {
   if (!el) return;
   el.addEventListener('keydown', (ev) => {
@@ -39,7 +42,7 @@ function aplicarBloqueioNosCamposBasicos() {
   bloquearEnter(document.getElementById('destino'));
 }
 
-// Detector de número de rua (evita confundir CEP)
+// Detector de número de rua
 function hasStreetNumber(text) {
   const s = String(text || "");
   const padraoSimples = /(?:,\s*|\s+)\d{1,5}(?!-)\b/;
@@ -48,17 +51,14 @@ function hasStreetNumber(text) {
 }
 
 // ---------------------------------------------------------------------------
-//                        ✅ Places API (New) – REST
+//                        Places API (New) – REST
 // ---------------------------------------------------------------------------
-// 🔑 SUA CHAVE:
 const PLACES_API_KEY = "AIzaSyAhGvrR_Gp4e0ROB1BInjNBSUQdHEh6ews";
 const PLACES_BASE = "https://places.googleapis.com/v1";
 
-// Foco em São Paulo (viés geográfico p/ sugestões mais próximas)
 const SP_CENTER = { latitude: -23.55052, longitude: -46.633308 };
-const SP_BIAS   = { circle: { center: SP_CENTER, radius: 50000 } }; // ~50 km
+const SP_BIAS   = { circle: { center: SP_CENTER, radius: 50000 } };
 
-// Field Masks: pedimos só o essencial (rápido e barato)
 const FM_AUTOCOMPLETE = [
   "suggestions.placePrediction.placeId",
   "suggestions.placePrediction.text",
@@ -68,7 +68,6 @@ const FM_AUTOCOMPLETE = [
 const FM_DETAILS = ["id","displayName","formattedAddress","location"].join(",");
 const FM_SEARCH  = ["places.id","places.displayName","places.formattedAddress","places.location"].join(",");
 
-// Gera token de sessão p/ autocomplete (um por ciclo de digitação)
 function newSessionToken() {
   if (window.crypto?.randomUUID) return crypto.randomUUID();
   return "tok-" + Date.now() + "-" + Math.random().toString(36).slice(2);
@@ -83,7 +82,6 @@ function newHeaders(fieldMask, sessionToken) {
   return h;
 }
 
-// Normaliza sugestões
 function normalizeNewSuggestions(resp) {
   const out = [];
   const list = resp?.suggestions || [];
@@ -115,7 +113,6 @@ function normalizeSearchToSuggestions(resp) {
   }).filter(x => x.place_id);
 }
 
-// Autocomplete (New API) com bias de SP
 let _acAborter = null;
 async function placesNewAutocomplete({ input, sessionToken, region = "br", language = "pt-BR" }) {
   try {
@@ -144,7 +141,6 @@ async function placesNewAutocomplete({ input, sessionToken, region = "br", langu
   }
 }
 
-// Text Search (fallback “fuzzy”) com bias de SP
 async function placesNewSearchText(textQuery, language = "pt-BR") {
   try {
     const res = await fetch(`${PLACES_BASE}/places:searchText`, {
@@ -163,7 +159,6 @@ async function placesNewSearchText(textQuery, language = "pt-BR") {
   }
 }
 
-// Details (New API)
 async function placesNewDetails(placeId, language = "pt-BR") {
   const url = `${PLACES_BASE}/places/${encodeURIComponent(placeId)}?languageCode=${encodeURIComponent(language)}`;
   const res = await fetch(url, { headers: newHeaders(FM_DETAILS) });
@@ -182,16 +177,33 @@ async function placesNewDetails(placeId, language = "pt-BR") {
 // ---------------------------------------------------------------------------
 
 // ---------- Regras de preço ----------
-function calcularPrecoMoto(kmInt, qtdParadas, pedagio = 0) {
+function calcularPrecoMotoBau(kmInt, qtdParadas, pedagio = 0) {
+  // Baú — sua tabela original
   let base = 0;
   if (kmInt <= 5) base = 40;
   else if (kmInt <= 12) base = 45;
   else if (kmInt <= 85) base = 20 + (2 * kmInt);
   else base = 190 + (kmInt - 85) * 3;
+
   const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 5;
   const total = base + taxaParadas + (Number(pedagio) || 0);
   return Math.max(0, Math.round(total));
 }
+
+function calcularPrecoMotoFood(kmInt, qtdParadas, pedagio = 0) {
+  // FOOD (mochila termica) — sua tabela
+  let base = 0;
+  if (kmInt <= 5) base = 45;               // 0–5,9
+  else if (kmInt <= 12) base = 50;         // 6–11,9
+  else if (kmInt <= 16) base = 55;         // 12–16
+  else if (kmInt <= 60)  base = 15 + (2.5 * kmInt);
+  else base = (2.5 * 90) + (kmInt - 90) * 3; // >90 → 3/km
+
+  const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 5; // +R$5 por parada
+  const total = base + taxaParadas + (Number(pedagio) || 0);
+  return Math.max(0, Math.round(total));
+}
+
 function calcularPrecoCarro(kmInt, qtdParadas, pedagio = 0) {
   let base = 0;
   if (kmInt <= 12) base = 100;
@@ -204,8 +216,28 @@ function calcularPrecoCarro(kmInt, qtdParadas, pedagio = 0) {
   return Math.max(0, Math.round(total));
 }
 
-// ---------- Monta mensagem WhatsApp ----------
-function montarMensagem(origem, destino, kmInt, valor, servicoTxt, paradasList = []) {
+// ---------- Observação FOOD ----------
+function setFoodInfo(show) {
+  const resumo = document.getElementById('resumo');
+  if (!resumo) return;
+  let info = document.getElementById('foodInfo');
+  if (!info) {
+    info = document.createElement('div');
+    info.id = 'foodInfo';
+    info.setAttribute('aria-live', 'polite');
+    info.style.cssText = 'padding:12px 14px;border:1px solid #2a3342;background:#0d131b;border-radius:12px;color:#cfe3ff;font-size:13px;line-height:1.35;';
+    info.innerHTML = `
+      <div style="font-weight:700; margin-bottom:6px;">Observação — FOOD</div>
+      <div>Serviços de alimentação têm valores diferenciados devido à espera em restaurantes e ao maior risco de avarias no transporte em mochila térmica.</div>
+    `;
+    const btnLimpar = document.getElementById('btnLimpar');
+    resumo.insertBefore(info, btnLimpar);
+  }
+  info.style.display = show ? '' : 'none';
+}
+
+// ---------- Monta mensagem WhatsApp (inclui OS FOOD) ----------
+function montarMensagem(origem, destino, kmInt, valor, servicoTxt, paradasList = [], extraObs = "") {
   const linhas = ["*RETIRADA*","📍 " + origem,""];
   if (paradasList.length) {
     paradasList.forEach((p, i) => {
@@ -213,15 +245,9 @@ function montarMensagem(origem, destino, kmInt, valor, servicoTxt, paradasList =
       if (end) linhas.push(`*PARADA ${i + 1}*`, "📍 " + end, "");
     });
   }
-  linhas.push(
-    "*ENTREGA*",
-    "📍 " + destino,
-    "",
-    `*Tipo de veículo:* ${servicoTxt}`,
-    "",
-    "🛣️ Km " + kmInt,
-    "💵 " + fmtBRL(valor)
-  );
+  linhas.push("*ENTREGA*", "📍 " + destino, "", `*Tipo de veículo:* ${servicoTxt}`);
+  if (extraObs) linhas.push(extraObs); // "Food mochila termica."
+  linhas.push("", "🛣️ Km " + kmInt, "💵 " + fmtBRL(valor));
   return encodeURIComponent(linhas.join("\n"));
 }
 
@@ -255,13 +281,12 @@ function geocodeByText(texto) {
   });
 }
 
-// ===== Pill “Adicionar número” (piu) — persistente =====
+// ===== Pill “Adicionar número”
 function showAddNumeroHint(inputEl) {
   if (!inputEl) return;
   const container = (inputEl.closest(".field") || inputEl.parentElement || document.body);
 
   if (container.querySelector(".add-num-pill-js") && !hasStreetNumber(inputEl.value)) return;
-
   if (hasStreetNumber(inputEl.value)) {
     container.querySelector(".add-num-pill-js")?.remove();
     return;
@@ -270,12 +295,6 @@ function showAddNumeroHint(inputEl) {
   const pill = document.createElement("button");
   pill.type = "button";
   pill.className = "add-num-pill-js";
-  pill.style.cssText = [
-    "display:inline-flex","align-items:center","gap:6px",
-    "padding:6px 10px","border-radius:999px",
-    "background:#102036","color:#cfe3ff","border:1px solid #274165",
-    "font-size:12px","cursor:pointer","margin-top:6px"
-  ].join(";");
   pill.innerHTML = `
     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" style="margin-right:2px">
       <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -283,16 +302,13 @@ function showAddNumeroHint(inputEl) {
     Adicionar número
   `;
 
-  const removeIfHasNumber = () => {
-    if (hasStreetNumber(inputEl.value)) pill.remove();
-  };
-
   pill.addEventListener("click", () => {
     if (!/,\s*$/.test(inputEl.value)) inputEl.value = inputEl.value.replace(/\s+$/, "") + ", ";
     inputEl.focus();
     inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
   });
 
+  const removeIfHasNumber = () => { if (hasStreetNumber(inputEl.value)) pill.remove(); };
   inputEl.addEventListener("input", removeIfHasNumber, { once: false });
 
   container.appendChild(pill);
@@ -357,13 +373,6 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
       const mainText = p.structured_formatting?.main_text || p.description || "";
       const secondaryText = p.structured_formatting?.secondary_text || "";
 
-      item.innerHTML = `
-        <div style="font-weight:600;display:flex;align-items:center;gap:8px">
-          <span class="suggestions__main">${mainText}</span>
-        </div>
-        <div class="suggestions__sec" style="font-size:12px;color:#a9b2c3">${secondaryText || ""}</div>
-      `;
-
       item.addEventListener("click", async () => {
         const cached = detailsCache.get(p.place_id);
         const fresh  = cached && (Date.now() - cached.ts < CACHE_TTL_MS) ? cached.place : null;
@@ -392,6 +401,13 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
           hideList();
         }
       });
+
+      item.innerHTML = `
+        <div style="font-weight:600;display:flex;align-items:center;gap:8px">
+          <span class="suggestions__main">${mainText}</span>
+        </div>
+        <div class="suggestions__sec" style="font-size:12px;color:#a9b2c3">${secondaryText || ""}</div>
+      `;
 
       list.appendChild(item);
     });
@@ -435,7 +451,7 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
     renderPredictions(norm);
   }, DEBOUNCE_MS);
 
-  // ====== Navegação via teclado ======
+  // Navegação via teclado
   inputEl.addEventListener("keydown", (ev) => {
     const items = list.querySelectorAll("button.suggestions__item");
     if (ev.key === "ArrowDown" && items.length) {
@@ -451,13 +467,13 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
     } else if (ev.key === "Enter" && items.length) {
       ev.preventDefault();
       if (activeIndex >= 0) items[activeIndex].click();
-      else items[0].click(); // pega o primeiro SEMPRE
+      else items[0].click();
     } else if (ev.key === "Escape") {
       hideList();
     }
   });
 
-  // Clique antes do blur — evita “perder” a seleção
+  // Clique antes do blur
   document.addEventListener('pointerdown', (ev) => {
     const btn = ev.target?.closest?.('.suggestions__item');
     if (!btn) return;
@@ -466,8 +482,43 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
     try { btn.click(); } catch {}
   }, true);
 
-  inputEl.addEventListener("input", () => { requestPredictions(); clearInvalid(inputEl); });
+  inputEl.addEventListener("input", () => {
+    requestPredictions();
+    clearInvalid(inputEl);
+
+    // se o usuário alterou o texto, invalida o place salvo para forçar nova validação
+    if (inputEl.id === 'origem') origemPlace = null;
+    else if (inputEl.id === 'destino') destinoPlace = null;
+    else if (inputEl.id?.startsWith('parada-')) {
+      const idx = Number(inputEl.id.split('-')[1] || 0);
+      paradasPlaces[idx] = null;
+    }
+  });
   inputEl.addEventListener("blur", () => setTimeout(hideList, 150));
+}
+
+// ===================== Injeta seletor “Tipo de Moto” =====================
+function ensureMotoTipoControl() {
+  if (document.getElementById('motoTipo')) return; // já existe
+
+  const row = document.querySelector('.row');
+  if (!row) return;
+
+  const field = document.createElement("div");
+  field.className = "field small";
+  field.id = "motoTipoRow";
+  field.style.display = "none"; // escondido até escolher “Motoboy”
+  field.innerHTML = `
+    <label for="motoTipo">Tipo de Moto</label>
+    <select id="motoTipo">
+      <option value="">Selecione…</option>
+      <option value="bau">Baú</option>
+      <option value="food">FOOD (mochila termica)</option>
+    </select>
+  `;
+  const servField = document.getElementById('servico')?.closest('.field');
+  if (servField && servField.parentElement === row) servField.after(field);
+  else row.appendChild(field);
 }
 
 // ===================== Autocomplete nos campos =====================
@@ -477,7 +528,6 @@ function configurarAutocomplete() {
   const origemInput  = document.getElementById("origem");
   const destinoInput = document.getElementById("destino");
 
-  // ✅ Bloqueia Enter nos inputs fixos
   aplicarBloqueioNosCamposBasicos();
 
   setupInputAutocomplete({
@@ -507,8 +557,6 @@ function adicionarParadaInput() {
   container.appendChild(wrap);
 
   const input = document.getElementById(`parada-${idx}`);
-
-  // ✅ Bloqueia Enter também nas paradas criadas dinamicamente
   bloquearEnter(input);
 
   setupInputAutocomplete({
@@ -518,34 +566,145 @@ function adicionarParadaInput() {
 }
 
 // ===================== Regras do serviço (UI dinâmica) =====================
-function updateRules(servico) {
-  const rulesList = document.querySelector(".rules ul");
-  if (!rulesList) return;
+function hideRules() {
+  const rules = document.querySelector('.rules');
+  if (!rules) return;
+  const ul = rules.querySelector('ul');
+  if (ul) ul.innerHTML = "";
+  rules.style.display = 'none';
+  setFoodInfo(false);
+}
+function showRules(htmlList) {
+  const rules = document.querySelector('.rules');
+  if (!rules) return;
+  const ul = rules.querySelector('ul');
+  if (!ul) return;
+  ul.innerHTML = htmlList;
+  rules.style.display = '';
+}
+
+function updateRules() {
+  const servicoSel  = document.getElementById("servico");
+  const motoTipoSel = document.getElementById("motoTipo");
+  const motoTipoRow = document.getElementById("motoTipoRow");
+
+  const servico = servicoSel?.value || "";
+
+  // mostra/oculta seletor de tipo de moto
+  if (motoTipoRow) motoTipoRow.style.display = (servico === "moto") ? "" : "none";
 
   if (servico === "carro") {
-    rulesList.innerHTML = `<li>Espera: R$ 0,70/min após 20 min</li>`;
-  } else {
-    rulesList.innerHTML = `
-      <li>Baú máx.: 44 × 42 × 32 cm</li>
-      <li>Peso máx.: 20 kg</li>
-      <li>Espera: R$ 0,60/min após 15 min</li>
-    `;
+    hideRules(); // nada para carro
+    return;
   }
+
+  if (servico === "moto") {
+    const tipo = motoTipoSel?.value || "";
+    if (tipo === "food") {
+      showRules(`
+        <li>Mochila térmica</li>
+        <li>Peso máx.: 20 kg</li>
+        <li>Espera: R$ 0,60/min após 20 min</li>
+      `);
+      setFoodInfo(true);
+    } else if (tipo === "bau") {
+      showRules(`
+        <li>Baú máx.: 44 × 42 × 32 cm</li>
+        <li>Peso máx.: 20 kg</li>
+        <li>Espera: R$ 0,60/min após 15 min</li>
+      `);
+      setFoodInfo(false);
+    } else {
+      // não escolheu o tipo ainda
+      hideRules();
+    }
+    return;
+  }
+
+  hideRules();
+}
+
+// ===================== Limpa só os endereços (para troca Baú/Food pós-orçamento) =====================
+function limparEnderecosInputs() {
+  const origemInput  = document.getElementById("origem");
+  const destinoInput = document.getElementById("destino");
+  if (origemInput) origemInput.value = "";
+  if (destinoInput) destinoInput.value = "";
+
+  origemPlace = null;
+  destinoPlace = null;
+
+  const contParadas = document.getElementById("paradas");
+  if (contParadas) contParadas.innerHTML = "";
+  paradasPlaces = [];
+  contadorParadas = 0;
+
+  const mDistEl  = document.getElementById("mDist");
+  const mValorEl = document.getElementById("mValor");
+  if (mDistEl)  mDistEl.textContent = "—";
+  if (mValorEl) mValorEl.textContent = "—";
+
+  // esconde Whats
+  const btnWhats = document.getElementById("btnWhats");
+  if (btnWhats) {
+    btnWhats.classList.add("hide");
+    btnWhats.setAttribute("aria-disabled", "true");
+    btnWhats.setAttribute("tabindex", "-1");
+    btnWhats.href = "#";
+  }
+
+  // remove erros/avisos residuais
+  clearInvalid(document.getElementById('origem'));
+  clearInvalid(document.getElementById('destino'));
+  document.querySelectorAll('[id^="parada-"]').forEach(clearInvalid);
+  document.querySelectorAll(".add-num-pill-js").forEach(el => el.remove());
 }
 
 // ===================== Cálculo e UI =====================
 function configurarEventos() {
+  ensureMotoTipoControl(); // injeta o seletor de tipo de moto
+
   const btnCalcular = document.getElementById("btnCalcular");
   const btnWhats    = document.getElementById("btnWhats");
   const btnLimpar   = document.getElementById("btnLimpar");
   const mDistEl     = document.getElementById("mDist");
   const mValorEl    = document.getElementById("mValor");
   const servicoSel  = document.getElementById("servico");
+  const motoTipoSel = document.getElementById("motoTipo");
 
-  // atualizar regras na troca de serviço
-  if (servicoSel) {
-    updateRules(servicoSel.value);
-    servicoSel.addEventListener("change", () => updateRules(servicoSel.value));
+  // garantir que regras começam escondidas
+  hideRules();
+
+  // trocar serviço/tipo → atualizar regras
+  if (servicoSel) servicoSel.addEventListener("change", updateRules);
+
+  if (motoTipoSel) {
+    motoTipoSel.addEventListener("change", () => {
+      updateRules();
+
+      // Se já houve orçamento em moto e o tipo mudou (Baú <-> Food), limpar endereços
+      const novoTipo = motoTipoSel.value || "";
+      if (
+        lastQuote.hasQuote &&
+        lastQuote.servico === "moto" &&
+        lastQuote.motoTipo &&
+        novoTipo &&
+        novoTipo !== lastQuote.motoTipo
+      ) {
+        limparEnderecosInputs();
+        lastQuote = { hasQuote: false, servico: null, motoTipo: null };
+      }
+    });
+  }
+
+  function esconderWhats() {
+    btnWhats.classList.add("hide");
+    btnWhats.setAttribute("aria-disabled", "true");
+    btnWhats.setAttribute("tabindex", "-1");
+    btnWhats.href = "#";
+  }
+  function mostrarWhats() {
+    btnWhats.classList.remove("hide");
   }
 
   esconderWhats();
@@ -554,38 +713,100 @@ function configurarEventos() {
     if (btnWhats.getAttribute("aria-disabled") === "true") e.preventDefault();
   });
 
-  btnLimpar.addEventListener("click", limparTudo);
+  btnLimpar.addEventListener("click", () => {
+    // limpar tudo geral (mantém seleção atual, só zera motoTipo para "Selecione…")
+    const origemInput  = document.getElementById("origem");
+    const destinoInput = document.getElementById("destino");
+    const motoTipoSel  = document.getElementById("motoTipo");
+    origemInput.value = "";
+    destinoInput.value = "";
+    if (motoTipoSel) motoTipoSel.selectedIndex = 0;
+
+    origemPlace = null;
+    destinoPlace = null;
+
+    const contParadas = document.getElementById("paradas");
+    contParadas.innerHTML = "";
+    paradasPlaces = [];
+    contadorParadas = 0;
+
+    mDistEl.textContent  = "—";
+    mValorEl.textContent = "—";
+
+    document.querySelectorAll(".add-num-pill-js").forEach(el => el.remove());
+
+    esconderWhats();
+    origemInput.focus();
+
+    updateRules(); // mantém regras escondidas
+    lastQuote = { hasQuote: false, servico: null, motoTipo: null };
+  });
 
   btnCalcular.addEventListener("click", async (e) => {
-    // ✅ Blindagem extra contra qualquer submit/validação nativa
     e.preventDefault();
 
-    if (!window.google) {
-      mDistEl.textContent  = "—";
-      mValorEl.textContent = "—";
-      esconderWhats();
-      return;
+    // ====== Validação coletiva ======
+    let anyError = false;
+
+    // 1) Validar tipo de moto quando serviço = moto
+    const servico = servicoSel?.value || "";
+    const tipoMoto = document.getElementById("motoTipo")?.value || "";
+    if (servico === "moto" && !tipoMoto) {
+      markInvalid(document.getElementById("motoTipo"), "Selecione Baú ou FOOD.");
+      anyError = true;
+    } else {
+      clearInvalid(document.getElementById("motoTipo"));
     }
 
+    // 2) Validar Retirada / Entrega (tenta geocodificar se tiver texto)
     const origemInput  = document.getElementById("origem");
     const destinoInput = document.getElementById("destino");
 
-    if (!origemPlace?.geometry?.location && origemInput?.value) {
-      origemPlace = await geocodeByText(origemInput.value.trim());
-      if (origemPlace?.geometry?.location) clearInvalid(origemInput);
-    }
-    if (!destinoPlace?.geometry?.location && destinoInput?.value) {
-      destinoPlace = await geocodeByText(destinoInput.value.trim());
-      if (destinoPlace?.geometry?.location) clearInvalid(destinoInput);
+    if (!origemPlace?.geometry?.location) {
+      const t = origemInput?.value.trim() || "";
+      if (!t) {
+        markInvalid(origemInput, "Informe o endereço de Retirada.");
+        anyError = true;
+      } else {
+        const p = await geocodeByText(t);
+        if (p?.geometry?.location) {
+          origemPlace = p;
+          clearInvalid(origemInput);
+        } else {
+          markInvalid(origemInput, "Selecione uma das opções da lista para Retirada.");
+          anyError = true;
+        }
+      }
+    } else {
+      clearInvalid(origemInput);
     }
 
-    // percorre inputs de paradas
+    if (!destinoPlace?.geometry?.location) {
+      const t = destinoInput?.value.trim() || "";
+      if (!t) {
+        markInvalid(destinoInput, "Informe o endereço de Entrega.");
+        anyError = true;
+      } else {
+        const p = await geocodeByText(t);
+        if (p?.geometry?.location) {
+          destinoPlace = p;
+          clearInvalid(destinoInput);
+        } else {
+          markInvalid(destinoInput, "Selecione uma das opções da lista para Entrega.");
+          anyError = true;
+        }
+      }
+    } else {
+      clearInvalid(destinoInput);
+    }
+
+    // 3) Validar paradas (se tiver texto, precisa ser place válido)
     const inputsParadas = Array.from(document.querySelectorAll('[id^="parada-"]'));
     const paradasValidas = [];
-
     for (let i = 0; i < inputsParadas.length; i++) {
-      const txt = inputsParadas[i].value?.trim();
-      if (!txt) { clearInvalid(inputsParadas[i]); continue; }
+      const inp = inputsParadas[i];
+      const txt = inp.value?.trim() || "";
+      if (!txt) { clearInvalid(inp); continue; }
 
       let place = paradasPlaces[i];
       if (!place?.geometry?.location) {
@@ -594,40 +815,55 @@ function configurarEventos() {
       }
       if (place?.geometry?.location) {
         paradasValidas.push(place);
-        clearInvalid(inputsParadas[i]);
+        clearInvalid(inp);
+      } else {
+        markInvalid(inp, "Selecione uma das opções da lista.");
+        anyError = true;
       }
     }
 
-    if (!origemPlace?.geometry?.location || !destinoPlace?.geometry?.location) {
+    if (anyError) {
       mDistEl.textContent  = "—";
       mValorEl.textContent = "—";
       esconderWhats();
       return;
     }
 
+    // ====== Tudo ok: calcular ======
     const waypoints = paradasValidas.map(p => ({ location: p.geometry.location, stopover: true }));
 
     const finalizarComKm = (kmInt) => {
-      const servico = servicoSel ? servicoSel.value : "moto";
+      const tipo    = document.getElementById("motoTipo")?.value || "";
 
       const pedagioInput = document.getElementById("pedagio");
       const pedagioVal = pedagioInput ? Number(pedagioInput.value || 0) : 0;
 
       let valor = 0;
-      if (servico === "carro") valor = calcularPrecoCarro(kmInt, paradasValidas.length, pedagioVal);
-      else if (servico === "moto") valor = calcularPrecoMoto(kmInt, paradasValidas.length, pedagioVal);
-      else valor = calcularPrecoMoto(kmInt, paradasValidas.length, pedagioVal); // fiorino por enquanto
+      let servicoTxt = "";
+      let extraObs = "";
+
+      if (servico === "carro") {
+        valor = calcularPrecoCarro(kmInt, paradasValidas.length, pedagioVal);
+        servicoTxt = "Carro";
+        setFoodInfo(false);
+      } else {
+         if (tipo === "food") {
+          valor = calcularPrecoMotoFood(kmInt, paradasValidas.length, pedagioVal);
+          servicoTxt = "Moto — FOOD (Somente mochila termica)";
+          setFoodInfo(true);
+        } else {
+          valor = calcularPrecoMotoBau(kmInt, paradasValidas.length, pedagioVal);
+          servicoTxt = "Moto — Baú";
+          setFoodInfo(false);
+        }
+      }
 
       mDistEl.textContent  = `${kmInt} km`;
       mValorEl.textContent = fmtBRL(valor);
 
-      // limpa qualquer “vermelho” remanescente
       clearInvalid(document.getElementById('origem'));
       clearInvalid(document.getElementById('destino'));
       document.querySelectorAll('[id^="parada-"]').forEach(clearInvalid);
-
-      const servicoMap = { moto: "Moto", carro: "Carro", fiorino: "Fiorino" };
-      const servicoTxt = servicoMap[servico] || "Serviço";
 
       const textoURL = montarMensagem(
         origemPlace.formatted_address,
@@ -635,13 +871,21 @@ function configurarEventos() {
         kmInt,
         valor,
         servicoTxt,
-        paradasValidas
+        paradasValidas,
+        extraObs
       );
 
       btnWhats.href = `https://api.whatsapp.com/send?phone=${WHATS_NUM}&text=${textoURL}`;
       btnWhats.setAttribute("aria-disabled", "false");
       btnWhats.removeAttribute("tabindex");
       mostrarWhats();
+
+      // Marca que houve orçamento com este tipo de moto
+      lastQuote = {
+        hasQuote: true,
+        servico,
+        motoTipo: servico === "moto" ? tipo : null
+      };
     };
 
     if (waypoints.length > 0 && google.maps?.DirectionsService) {
@@ -675,50 +919,6 @@ function configurarEventos() {
       esconderWhats();
     }
   });
-
-  function esconderWhats() {
-    btnWhats.classList.add("hide");
-    btnWhats.setAttribute("aria-disabled", "true");
-    btnWhats.setAttribute("tabindex", "-1");
-    btnWhats.href = "#";
-  }
-  function mostrarWhats() {
-    btnWhats.classList.remove("hide");
-  }
-
-  function limparTudo() {
-    const origemInput  = document.getElementById("origem");
-    const destinoInput = document.getElementById("destino");
-    origemInput.value = "";
-    destinoInput.value = "";
-
-    origemPlace = null;
-    destinoPlace = null;
-
-    const contParadas = document.getElementById("paradas");
-    contParadas.innerHTML = "";
-    paradasPlaces = [];
-    contadorParadas = 0;
-
-    const pesoInput = document.getElementById("peso");
-    if (pesoInput) pesoInput.value = "1";
-    const pedagioInput = document.getElementById("pedagio");
-    if (pedagioInput) pedagioInput.value = "";
-
-    const mDistEl = document.getElementById("mDist");
-    const mValorEl = document.getElementById("mValor");
-    mDistEl.textContent  = "—";
-    mValorEl.textContent = "—";
-
-    // remove qualquer pill remanescente
-    document.querySelectorAll(".add-num-pill-js").forEach(el => el.remove());
-
-    esconderWhats();
-    origemInput.focus();
-
-    const servicoSel  = document.getElementById("servico");
-    if (servicoSel) updateRules(servicoSel.value);
-  }
 }
 
 // ===================== Validação (utilitários) =====================
@@ -736,7 +936,7 @@ function markInvalid(input, hintMsg){
     hint.style.color = '#ff8181';
     input.after(hint);
   }
-  hint.textContent = hintMsg || 'Selecione um endereço válido da lista.';
+  hint.textContent = hintMsg || 'Campo obrigatório.';
 }
 function clearInvalid(input){
   if(!input) return;
@@ -748,7 +948,9 @@ function clearInvalid(input){
 
 // ===================== Init =====================
 function initOrcamento() {
+  ensureMotoTipoControl();
   configurarAutocomplete();
   configurarEventos();
+  hideRules(); // começa sem regras
 }
 window.initOrcamento = initOrcamento;
