@@ -197,8 +197,8 @@ function calcularPrecoMotoFood(kmInt, qtdParadas, pedagio = 0) {
   if (kmInt <= 5) base = 45;           // 0–5,9
   else if (kmInt <= 12) base = 50;     // 6–11,9
   else if (kmInt <= 16) base = 55;     // 12–16
-  else if (kmInt <= 90) base = 2.5 * kmInt; // 17–90
-  else base = 3.0 * kmInt;             // >90
+  else if (kmInt <= 90) base = 30 + (2 * kmInt)
+  else base = 3.0 * kmInt;         
 
   const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 5;
   const total = base + taxaParadas + (Number(pedagio) || 0);
