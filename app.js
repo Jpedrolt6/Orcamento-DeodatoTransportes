@@ -847,17 +847,16 @@ function configurarEventos() {
 
       if (servico === "carro") {
         valor = calcularPrecoCarro(kmInt, paradasValidas.length, pedagioVal);
-        servicoTxt = "Carro";
+        servicoTxt = "*_Carro_*";
         setFoodInfo(false);
       } else {
         if (tipo === "food") {
           valor = calcularPrecoMotoFood(kmInt, paradasValidas.length, pedagioVal);
-          servicoTxt = "Moto — FOOD (Somente mochila termica)";
-          extraObs = "Food mochila termica.";
+          servicoTxt = "*_Moto — (Somente mochila termica)_*";
           setFoodInfo(true);
         } else {
           valor = calcularPrecoMotoBau(kmInt, paradasValidas.length, pedagioVal);
-          servicoTxt = "Moto — Baú";
+          servicoTxt = "*_Moto — Baú_*";
           setFoodInfo(false);
         }
       }
