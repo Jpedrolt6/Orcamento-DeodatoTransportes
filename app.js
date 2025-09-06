@@ -51,6 +51,77 @@ function hasStreetNumber(text) {
 }
 
 // ---------------------------------------------------------------------------
+//               🔖 Favoritos simples (localStorage, sem visual extra)
+// ---------------------------------------------------------------------------
+const FAV_KEY = "favAddrV1";
+
+const Favorites = {
+  _list: [],
+
+  _load() {
+    try { this._list = JSON.parse(localStorage.getItem(FAV_KEY)) || []; }
+    catch { this._list = []; }
+  },
+
+  _save() {
+    try { localStorage.setItem(FAV_KEY, JSON.stringify(this._list)); } catch {}
+  },
+
+  _norm(s) {
+    return String(s || "").trim().toLowerCase();
+  },
+
+  addFromPlace(place) {
+    if (!place?.formatted_address) return;
+    const addr = place.formatted_address;
+    const lat = place?.geometry?.location?.lat ?? place?.geometry?.location?.latitude;
+    const lng = place?.geometry?.location?.lng ?? place?.geometry?.location?.longitude;
+    if (lat == null || lng == null) return;
+
+    this._load();
+    const key = this._norm(addr);
+    const i = this._list.findIndex(x => this._norm(x.addr) === key);
+    if (i >= 0) {
+      this._list[i].count = (this._list[i].count || 0) + 1;
+      this._list[i].last  = Date.now();
+      this._list[i].lat   = lat;
+      this._list[i].lng   = lng;
+    } else {
+      this._list.push({ addr, lat, lng, count: 1, last: Date.now() });
+    }
+    // mantém lista enxuta
+    this._list.sort((a,b)=> (b.count-a.count) || (b.last-a.last));
+    if (this._list.length > 50) this._list.length = 50;
+    this._save();
+  },
+
+  // retorna sugestões no formato da autocomplete (com flag favPlace)
+  matches(query = "", limit = 5) {
+    this._load();
+    const q = this._norm(query);
+    const arr = q
+      ? this._list.filter(x => this._norm(x.addr).includes(q))
+      : this._list.slice();
+    arr.sort((a,b)=> (b.count-a.count) || (b.last-a.last));
+    const top = arr.slice(0, limit);
+    return top.map((rec, idx) => {
+      const parts = rec.addr.split(", ");
+      const main  = parts.shift() || rec.addr;
+      const sec   = parts.join(", ");
+      return {
+        description: rec.addr,
+        structured_formatting: { main_text: main, secondary_text: sec },
+        place_id: "fav:" + idx + ":" + rec.last, // id único o suficiente
+        favPlace: {
+          formatted_address: rec.addr,
+          geometry: { location: { lat: rec.lat, lng: rec.lng } }
+        }
+      };
+    });
+  }
+};
+
+// ---------------------------------------------------------------------------
 //                        Places API (New) – REST
 // ---------------------------------------------------------------------------
 const PLACES_API_KEY = "AIzaSyAhGvrR_Gp4e0ROB1BInjNBSUQdHEh6ews";
@@ -178,11 +249,10 @@ async function placesNewDetails(placeId, language = "pt-BR") {
 
 // ---------- Regras de preço ----------
 function calcularPrecoMotoBau(kmInt, qtdParadas, pedagio = 0) {
-  // Baú — TABELA CONFIRMADA
   let base = 0;
   if (kmInt <= 5) base = 40;
   else if (kmInt <= 12) base = 45;
-    else if (kmInt <= 15) base = 50;
+  else if (kmInt <= 15) base = 50;
   else if (kmInt <= 80) base = 20 + (2 * kmInt);
   else base = 180 + (kmInt - 80) * 3;
 
@@ -192,16 +262,14 @@ function calcularPrecoMotoBau(kmInt, qtdParadas, pedagio = 0) {
 }
 
 function calcularPrecoMotoFood(kmInt, qtdParadas, pedagio = 0) {
-  // FOOD (mochila térmica) — TABELA CONFIRMADA
   let base = 0;
-  if (kmInt <= 5) base = 45;               // 0–5,9
-  else if (kmInt <= 12) base = 50;         // 6–11,9
-  else if (kmInt <= 16) base = 55;         // 12–16
-  else if (kmInt <= 80) base = 30 + (2 * kmInt); 
-   else base = 190 + (kmInt - 80) * 3;
+  if (kmInt <= 5) base = 45;
+  else if (kmInt <= 12) base = 50;
+  else if (kmInt <= 16) base = 55;
+  else if (kmInt <= 80) base = 30 + (2 * kmInt);
+  else base = 190 + (kmInt - 80) * 3;
 
-
-  const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 5; // +R$5 por parada
+  const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 5;
   const total = base + taxaParadas + (Number(pedagio) || 0);
   return Math.max(0, Math.round(total));
 }
@@ -214,6 +282,37 @@ function calcularPrecoCarro(kmInt, qtdParadas, pedagio = 0) {
   else if (kmInt <= 69) base = 4.0 * kmInt;
   else base = 276 + (kmInt - 69) * 4.5;
   const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 10;
+  const total = base + taxaParadas + (Number(pedagio) || 0);
+  return Math.max(0, Math.round(total));
+}
+
+// ---------- Utilitário p/ degrau 0–30 km ----------
+function tarifaDegrau(kmInt, ate30Valor, pos30PorKm){
+  const k = Math.max(0, Number(kmInt) || 0);
+  if (k <= 30) return ate30Valor;
+  return ate30Valor + pos30PorKm * (k - 30);
+}
+
+// ---------- Fiorino ----------
+function calcularPrecoFiorino(kmInt, qtdParadas = 0, pedagio = 0){
+  const base = tarifaDegrau(kmInt, 190, 4);
+  const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 10; // segue padrão do carro
+  const total = base + taxaParadas + (Number(pedagio) || 0);
+  return Math.max(0, Math.round(total));
+}
+
+// ---------- HR / Ducato ----------
+function calcularPrecoHRDucato(kmInt, qtdParadas = 0, pedagio = 0){
+  const base = tarifaDegrau(kmInt, 290, 5);
+  const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 20;
+  const total = base + taxaParadas + (Number(pedagio) || 0);
+  return Math.max(0, Math.round(total));
+}
+
+// ---------- Iveco / Master ----------
+function calcularPrecoIvecoMaster(kmInt, qtdParadas = 0, pedagio = 0){
+  const base = tarifaDegrau(kmInt, 360, 5);
+  const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 20;
   const total = base + taxaParadas + (Number(pedagio) || 0);
   return Math.max(0, Math.round(total));
 }
@@ -238,7 +337,7 @@ function setFoodInfo(show) {
   info.style.display = show ? '' : 'none';
 }
 
-// ---------- Monta mensagem WhatsApp (inclui OS FOOD) ----------
+// ---------- Monta mensagem WhatsApp ----------
 function montarMensagem(origem, destino, kmInt, valor, servicoTxt, paradasList = [], extraObs = "") {
   const linhas = ["*RETIRADA*","📍 " + origem,""];
   if (paradasList.length) {
@@ -248,10 +347,10 @@ function montarMensagem(origem, destino, kmInt, valor, servicoTxt, paradasList =
     });
   }
   linhas.push("*ENTREGA*", "📍 " + destino, "", `*Tipo de veículo:* ${servicoTxt}`);
-  if (extraObs) linhas.push(extraObs); // "Food mochila termica."
+  if (extraObs) linhas.push(extraObs);
   linhas.push("", "🛣️ Km " + kmInt, "💵 " + fmtBRL(valor));
   return encodeURIComponent(linhas.join("\n"));
-}
+} 
 
 // ===================== debounce =====================
 function debounce(fn, wait = 300) {
@@ -316,7 +415,7 @@ function showAddNumeroHint(inputEl) {
   container.appendChild(pill);
 }
 
-// ===================== Autocomplete (Places New) =====================
+// ===================== Autocomplete (Places New) + Favoritos =====================
 function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
   if (!window.google) return;
 
@@ -375,10 +474,14 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
       const mainText = p.structured_formatting?.main_text || p.description || "";
       const secondaryText = p.structured_formatting?.secondary_text || "";
 
-      item.addEventListener("click", async () => {
-        const cached = detailsCache.get(p.place_id);
-        const fresh  = cached && (Date.now() - cached.ts < CACHE_TTL_MS) ? cached.place : null;
+      item.innerHTML = `
+        <div style="font-weight:600;display:flex;align-items:center;gap:8px">
+          <span class="suggestions__main">${mainText}</span>
+        </div>
+        <div class="suggestions__sec" style="font-size:12px;color:#a9b2c3">${secondaryText || ""}</div>
+      `;
 
+      item.addEventListener("click", async () => {
         const finish = (place) => {
           inputEl.value = place.formatted_address || p.description;
           clearInvalid(inputEl);
@@ -386,9 +489,21 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
 
           hideList();
           sessionToken = newSessionToken();
+
+          // 🔖 salva favorito
+          Favorites.addFromPlace(place);
+
           try { onPlaceChosen && onPlaceChosen(place); } catch {}
         };
 
+        // Se veio de favorito, já temos lat/lng → não chama Details
+        if (p.favPlace) {
+          finish(p.favPlace);
+          return;
+        }
+
+        const cached = detailsCache.get(p.place_id);
+        const fresh  = cached && (Date.now() - cached.ts < CACHE_TTL_MS) ? cached.place : null;
         if (fresh) { finish(fresh); return; }
 
         try {
@@ -404,54 +519,75 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
         }
       });
 
-      item.innerHTML = `
-        <div style="font-weight:600;display:flex;align-items:center;gap:8px">
-          <span class="suggestions__main">${mainText}</span>
-        </div>
-        <div class="suggestions__sec" style="font-size:12px;color:#a9b2c3">${secondaryText || ""}</div>
-      `;
-
       list.appendChild(item);
     });
     showList();
     positionList();
   }
 
-  const requestPredictions = debounce(async () => {
-    const q = inputEl.value.trim();
-    if (q.length < MIN_CHARS) { hideList(); return; }
-
-    const cached = predCache.get(q);
-    if (cached && (Date.now() - cached.ts < CACHE_TTL_MS)) {
-      renderPredictions(cached.predictions);
-      return;
-    }
-
+  // monta lista: favoritos (se houver) + predictions do Google
+  async function buildAndRender(query) {
+    const favs = Favorites.matches(query, 5);
     let norm = [];
-    try {
-      const data = await placesNewAutocomplete({
-        input: q,
-        sessionToken,
-        region: COUNTRY_CODE,
-        language: "pt-BR"
-      });
-      norm = normalizeNewSuggestions(data);
-    } catch {
-      norm = [];
+
+    const q = (query || "").trim();
+    if (q.length >= MIN_CHARS) {
+      const cached = predCache.get(q);
+      if (cached && (Date.now() - cached.ts < CACHE_TTL_MS)) {
+        norm = cached.predictions;
+      } else {
+        try {
+          const data = await placesNewAutocomplete({
+            input: q,
+            sessionToken,
+            region: COUNTRY_CODE,
+            language: "pt-BR"
+          });
+          norm = normalizeNewSuggestions(data);
+
+          if (!norm.length || norm.length < MIN_SUGGESTIONS) {
+            try {
+              const st = await placesNewSearchText(q, "pt-BR");
+              const extra = normalizeSearchToSuggestions(st);
+              const seen = new Set(norm.map(x => x.place_id));
+              for (const e of extra) if (!seen.has(e.place_id)) norm.push(e);
+            } catch {/* noop */}
+          }
+
+          predCache.set(q, { ts: Date.now(), predictions: norm });
+        } catch {
+          norm = [];
+        }
+      }
     }
 
-    if (!norm.length || norm.length < MIN_SUGGESTIONS) {
-      try {
-        const st = await placesNewSearchText(q, "pt-BR");
-        const extra = normalizeSearchToSuggestions(st);
-        const seen = new Set(norm.map(x => x.place_id));
-        for (const e of extra) if (!seen.has(e.place_id)) norm.push(e);
-      } catch {/* noop */}
+    // merge: favoritos + Google, sem duplicar endereços iguais
+    const seenAddr = new Set();
+    const merged = [];
+    for (const a of favs) {
+      const key = (a.description || "").toLowerCase();
+      if (!seenAddr.has(key)) { merged.push(a); seenAddr.add(key); }
+    }
+    for (const a of norm) {
+      const key = (a.description || "").toLowerCase();
+      if (!seenAddr.has(key)) { merged.push(a); seenAddr.add(key); }
     }
 
-    predCache.set(q, { ts: Date.now(), predictions: norm });
-    renderPredictions(norm);
+    renderPredictions(merged);
+  }
+
+  const requestPredictions = debounce(() => {
+    buildAndRender(inputEl.value);
   }, DEBOUNCE_MS);
+
+  inputEl.addEventListener("focus", () => {
+    positionList();
+    const v = inputEl.value.trim();
+    if (!v) {
+      const favs = Favorites.matches("", 8);
+      if (favs.length) renderPredictions(favs);
+    }
+  });
 
   // Navegação via teclado
   inputEl.addEventListener("keydown", (ev) => {
@@ -488,7 +624,6 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
     requestPredictions();
     clearInvalid(inputEl);
 
-    // se o usuário alterou o texto, invalida o place salvo para forçar nova validação
     if (inputEl.id === 'origem') origemPlace = null;
     else if (inputEl.id === 'destino') destinoPlace = null;
     else if (inputEl.id?.startsWith('parada-')) {
@@ -501,7 +636,7 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
 
 // ===================== Injeta seletor “Tipo de Moto” =====================
 function ensureMotoTipoControl() {
-  if (document.getElementById('motoTipo')) return; // já existe
+  if (document.getElementById('motoTipo')) return;
 
   const row = document.querySelector('.row');
   if (!row) return;
@@ -514,7 +649,7 @@ function ensureMotoTipoControl() {
     <label for="motoTipo">Tipo de Moto</label>
     <select id="motoTipo">
       <option value="">Selecione…</option>
-      <option value="bau">Baú </option>
+      <option value="bau">Baú</option>
       <option value="food">FOOD (mochila termica)</option>
     </select>
   `;
@@ -596,11 +731,11 @@ function updateRules() {
   if (motoTipoRow) motoTipoRow.style.display = (servico === "moto") ? "" : "none";
 
   if (servico === "carro") {
-    setFoodInfo(false);
     showRules(`
-      <li>Ideal para volumes médios que não cabem na moto</li>
+      <li>Ideal para caixas pequenas e médias, acima da capacidade da moto</li>
       <li>Espera: R$ 0,70/min após 20 min</li>
     `);
+    setFoodInfo(false);
     return;
   }
 
@@ -609,7 +744,7 @@ function updateRules() {
     if (tipo === "food") {
       showRules(`
         <li>Mochila térmica</li>
-        <li> Ideal para entregas de alimentação</li>
+        <li>Ideal para entregas de alimentos</li>
         <li>Peso máx.: 20 kg</li>
         <li>Espera: R$ 0,60/min após 20 min</li>
       `);
@@ -618,51 +753,54 @@ function updateRules() {
       showRules(`
         <li>Baú máx.: 44 × 42 × 32 cm</li>
         <li>Peso máx.: 20 kg</li>
-        <li>Ideal para documentos, eletrônicos, roupas e pequenos volumes</Li>
+        <li>Ideal para documentos, eletrônicos, roupas e pequenas encomendas</li>
         <li>Espera: R$ 0,60/min após 15 min</li>
       `);
       setFoodInfo(false);
     } else {
-      // não escolheu o tipo ainda
-      hideRules();
+      hideRules(); // não escolheu o tipo ainda
     }
+    return;
+  }
+
+  if (servico === "fiorino") {
+    showRules(`
+      <li>Ideal para cargas fracionadas de medio porte</li>
+      <li>Melhor custo-benefício para cargas de até 600 kg</li>
+      <li>Dimensões máx.: 1,35 m alt. × 1,10 m larg. × 1,85 m comp.</li>
+      <li>Peso máx.: 600 kg</li>
+      <li>Picapes: Ideal para cargas alongadas (ex.: tubos, barras, perfis metálicos)</li>
+      <li> Espera: R$ 0,80/min após 20 min</li>
+    `);
+    return;
+  }
+
+  if (servico === "hr_ducato") {
+    showRules(`
+      <li>Pequeno caminhão / Ideal para cargas volumosas em quantidade intermediária</li>
+      <li>Ideal para mudanças pequenas e cargas maiores</li>
+      <li>Dimensões máx.: 1,90 m alt. × 1,40 m larg. × 2,50 m comp.</li>
+      <li>Peso máx.: 1500 kg</li>
+      <li> Espera: R$ 1,20/min após 30 min</li>
+    `);
+    return;
+  }
+
+  if (servico === "iveco_master") {
+    showRules(`
+      <li>Ideal para operações maiores em centros urbanos com restrição de caminhões</li>
+      <li>Transporte de cargas paletizadas</li>
+      <li>Capacidade volumétrica 10-15 m³</li>
+      <li>Peso max.: 2300 kg</li>
+      <li> Espera: R$ 1,20/min após 30 min</li>
+    `);
     return;
   }
 
   hideRules();
 }
 
-// ===================== Limpa só os endereços (para troca Baú/Food pós-orçamento) =====================
-function limparEnderecosInputs() {
-  const origemInput  = document.getElementById("origem");
-  const destinoInput = document.getElementById("destino");
-  if (origemInput) origemInput.value = "";
-  if (destinoInput) destinoInput.value = "";
-
-  origemPlace = null;
-  destinoPlace = null;
-
-  const contParadas = document.getElementById("paradas");
-  if (contParadas) contParadas.innerHTML = "";
-  paradasPlaces = [];
-  contadorParadas = 0;
-
-  const mDistEl  = document.getElementById("mDist");
-  const mValorEl = document.getElementById("mValor");
-  if (mDistEl)  mDistEl.textContent = "—";
-  if (mValorEl) mValorEl.textContent = "—";
-
-  // esconde Whats
-  esconderWhats();
-
-  // remove erros/avisos residuais
-  clearInvalid(document.getElementById('origem'));
-  clearInvalid(document.getElementById('destino'));
-  document.querySelectorAll('[id^="parada-"]').forEach(clearInvalid);
-  document.querySelectorAll(".add-num-pill-js").forEach(el => el.remove());
-}
-
-// ===================== Botão Whats — helpers (mostrar, esconder, rolar, vibrar/animar) =====================
+// ===================== Botão Whats — helpers =====================
 function getBtnWhats() {
   return document.getElementById("btnWhats");
 }
@@ -689,11 +827,8 @@ function mostrarWhats() {
 function scrollToWhats() {
   const btnWhats = getBtnWhats();
   if (!btnWhats) return;
-  // rola suavemente até o botão no painel de resumo
   const y = btnWhats.getBoundingClientRect().top + window.scrollY - 80;
   window.scrollTo({ top: y, behavior: 'smooth' });
-  // Alternativa:
-  // btnWhats.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 // injeta CSS da animação (caso não exista no seu CSS)
@@ -725,28 +860,46 @@ function scrollToWhats() {
 function pulseWhats() {
   const btnWhats = getBtnWhats();
   if (!btnWhats) return;
-
-  // animação visual forte (sempre funciona)
   btnWhats.classList.remove('wpp-attention');
-  // forçar reflow pra reiniciar a animação
-  void btnWhats.offsetWidth;
+  void btnWhats.offsetWidth; // reflow
   btnWhats.classList.add('wpp-attention');
-
-  // vibração no mobile (HTTPS + gesto do usuário ajudam)
-  try {
-    if (navigator.vibrate) {
-      // padrão agressivo (total ~1.5s)
-      navigator.vibrate([80, 60, 80, 60, 120, 60, 80]);
-    }
-  } catch { /* ignora se não suportar */ }
+  try { if (navigator.vibrate) navigator.vibrate([80, 60, 80, 60, 120, 60, 80]); } catch {}
 }
 
-// vibra também se o usuário tocar no botão (para garantir em mais navegadores)
+// vibra também se o usuário tocar no botão
 document.addEventListener('pointerdown', (ev) => {
   const btn = ev.target?.closest?.('#btnWhats');
   if (!btn) return;
   try { if (navigator.vibrate) navigator.vibrate([40, 40, 80]); } catch {}
 }, { passive: true });
+
+// ===================== Limpa só os endereços (para troca Baú/Food pós-orçamento) =====================
+function limparEnderecosInputs() {
+  const origemInput  = document.getElementById("origem");
+  const destinoInput = document.getElementById("destino");
+  if (origemInput) origemInput.value = "";
+  if (destinoInput) destinoInput.value = "";
+
+  origemPlace = null;
+  destinoPlace = null;
+
+  const contParadas = document.getElementById("paradas");
+  if (contParadas) contParadas.innerHTML = "";
+  paradasPlaces = [];
+  contadorParadas = 0;
+
+  const mDistEl  = document.getElementById("mDist");
+  const mValorEl = document.getElementById("mValor");
+  if (mDistEl)  mDistEl.textContent = "—";
+  if (mValorEl) mValorEl.textContent = "—";
+
+  esconderWhats();
+
+  clearInvalid(document.getElementById('origem'));
+  clearInvalid(document.getElementById('destino'));
+  document.querySelectorAll('[id^="parada-"]').forEach(clearInvalid);
+  document.querySelectorAll(".add-num-pill-js").forEach(el => el.remove());
+}
 
 // ===================== Cálculo e UI =====================
 function configurarEventos() {
@@ -760,18 +913,18 @@ function configurarEventos() {
   const servicoSel  = document.getElementById("servico");
   const motoTipoSel = document.getElementById("motoTipo");
 
-  // garantir que regras começam escondidas e botão Whats também
-  hideRules();
   esconderWhats();
 
-  // trocar serviço/tipo → atualizar regras
-  if (servicoSel) servicoSel.addEventListener("change", updateRules);
+  // atualizar regras ao trocar serviço/tipo
+  if (servicoSel) servicoSel.addEventListener("change", () => {
+    updateRules();
+    if (servicoSel.value !== "moto") clearInvalid(document.getElementById("motoTipo"));
+  });
 
   if (motoTipoSel) {
     motoTipoSel.addEventListener("change", () => {
       updateRules();
 
-      // Se já houve orçamento em moto e o tipo mudou (Baú <-> Food), limpar endereços
       const novoTipo = motoTipoSel.value || "";
       if (
         lastQuote.hasQuote &&
@@ -791,7 +944,6 @@ function configurarEventos() {
   });
 
   btnLimpar?.addEventListener("click", () => {
-    // limpar tudo geral (mantém seleção atual, só zera motoTipo para "Selecione…")
     const origemInput  = document.getElementById("origem");
     const destinoInput = document.getElementById("destino");
     const motoTipoSel  = document.getElementById("motoTipo");
@@ -815,7 +967,7 @@ function configurarEventos() {
     esconderWhats();
     origemInput?.focus();
 
-    updateRules(); // mantém regras escondidas
+    updateRules();
     lastQuote = { hasQuote: false, servico: null, motoTipo: null };
   });
 
@@ -899,7 +1051,6 @@ function configurarEventos() {
       }
     }
 
-    // Se houve qualquer erro: limpa métricas, esconde Whats, NÃO desce a tela
     if (anyError) {
       if (mDistEl)  mDistEl.textContent  = "—";
       if (mValorEl) mValorEl.textContent = "—";
@@ -912,7 +1063,6 @@ function configurarEventos() {
 
     const finalizarComKm = (kmInt) => {
       const tipo    = document.getElementById("motoTipo")?.value || "";
-
       const pedagioInput = document.getElementById("pedagio");
       const pedagioVal = pedagioInput ? Number(pedagioInput.value || 0) : 0;
 
@@ -924,7 +1074,7 @@ function configurarEventos() {
         valor = calcularPrecoCarro(kmInt, paradasValidas.length, pedagioVal);
         servicoTxt = "*_Carro_*";
         setFoodInfo(false);
-      } else {
+      } else if (servico === "moto") {
         if (tipo === "food") {
           valor = calcularPrecoMotoFood(kmInt, paradasValidas.length, pedagioVal);
           servicoTxt = "*_Moto — (Somente mochila termica)_*";
@@ -934,6 +1084,18 @@ function configurarEventos() {
           servicoTxt = "*_Moto — Baú_*";
           setFoodInfo(false);
         }
+      } else if (servico === "fiorino") {
+        valor = calcularPrecoFiorino(kmInt, paradasValidas.length, pedagioVal);
+        servicoTxt = "*_Fiorino_*";
+        setFoodInfo(false);
+      } else if (servico === "hr_ducato") {
+        valor = calcularPrecoHRDucato(kmInt, paradasValidas.length, pedagioVal);
+        servicoTxt = "*_HR / Ducato_*";
+        setFoodInfo(false);
+      } else if (servico === "iveco_master") {
+        valor = calcularPrecoIvecoMaster(kmInt, paradasValidas.length, pedagioVal);
+        servicoTxt = "*_Iveco / Master_*";
+        setFoodInfo(false);
       }
 
       if (mDistEl)  mDistEl.textContent  = `${kmInt} km`;
@@ -958,11 +1120,9 @@ function configurarEventos() {
         btnWhats.href = `https://api.whatsapp.com/send?phone=${WHATS_NUM}&text=${textoURL}`;
       }
       mostrarWhats();
-      // Chama atenção + rola pra baixo
       pulseWhats();
       scrollToWhats();
 
-      // Marca que houve orçamento com este tipo de moto
       lastQuote = {
         hasQuote: true,
         servico,
@@ -1001,6 +1161,9 @@ function configurarEventos() {
       esconderWhats();
     }
   });
+
+  // força estado inicial correto logo na montagem
+  updateRules();
 }
 
 // ===================== Validação (utilitários) =====================
@@ -1033,7 +1196,7 @@ function initOrcamento() {
   ensureMotoTipoControl();
   configurarAutocomplete();
   configurarEventos();
-  hideRules(); // começa sem regras
-  esconderWhats(); // começa sem o botão
+  // NÃO chamamos hideRules() aqui; updateRules() já cuida do estado inicial
+  esconderWhats();
 }
 window.initOrcamento = initOrcamento;

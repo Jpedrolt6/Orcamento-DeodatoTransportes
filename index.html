@@ -44,10 +44,14 @@
             <select id="servico">
               <option value="moto">Motoboy</option>
               <option value="carro">Carro</option>
+              <option value="fiorino">Fiorino / Picapes</option>
+              <option value="hr_ducato">HR / Ducato</option>
+              <option value="iveco_master">Iveco / Master</option>
             </select>
           </div>
 
-          <div class="field small" id="motoTipoRow">
+          <!-- começa escondido; o JS mostra quando "Motoboy" está selecionado -->
+          <div class="field small" id="motoTipoRow" style="display:none">
             <label for="motoTipo">Tipo (moto)</label>
             <select id="motoTipo">
               <option value="" selected disabled>Selecione…</option>
@@ -78,13 +82,14 @@
           <div class="rules">
             <h3>Regras do serviço</h3>
             <ul>
+              <!-- você edita essas regras livremente no app.js (updateRules) ou aqui -->
               <li>Baú máx.: 44 × 42 × 32 cm</li>
               <li>Peso máx.: 20 kg</li>
               <li>Espera: R$ 0,60/min após 15 min</li>
             </ul>
           </div>
 
-          <!-- Botão do WhatsAPp agora aparece aqui embaixo, só após cálculo OK -->
+          <!-- Aparece só após cálculo OK -->
           <a class="cta wa hide" id="btnWhats" href="#" target="_blank" rel="noopener">Enviar Orçamento no WhatsApp</a>
 
           <button class="outline" id="btnLimpar" type="button">Limpar tudo</button>
