@@ -191,15 +191,16 @@ function calcularPrecoMotoBau(kmInt, qtdParadas, pedagio = 0) {
 }
 
 function calcularPrecoMotoFood(kmInt, qtdParadas, pedagio = 0) {
-  // FOOD (mochila termica) — sua tabela
+  // FOOD (mochila termica) — 0–5,9: 45 • 6–11,9: 50 • 12–16: 55
+  // 17–90: 2,50/km • >90: 3,00/km  | +R$5 por parada
   let base = 0;
-  if (kmInt <= 5) base = 45;               // 0–5,9
-  else if (kmInt <= 12) base = 50;         // 6–11,9
-  else if (kmInt <= 16) base = 55;         // 12–16
-  else if (kmInt <= 60)  base = 15 + (2.5 * kmInt);
-  else base = (2.5 * 90) + (kmInt - 90) * 3; // >90 → 3/km
+  if (kmInt <= 5) base = 45;           // 0–5,9
+  else if (kmInt <= 12) base = 50;     // 6–11,9
+  else if (kmInt <= 16) base = 55;     // 12–16
+  else if (kmInt <= 90) base = 2.5 * kmInt; // 17–90
+  else base = 3.0 * kmInt;             // >90
 
-  const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 5; // +R$5 por parada
+  const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 5;
   const total = base + taxaParadas + (Number(pedagio) || 0);
   return Math.max(0, Math.round(total));
 }
@@ -651,6 +652,7 @@ function limparEnderecosInputs() {
     btnWhats.setAttribute("aria-disabled", "true");
     btnWhats.setAttribute("tabindex", "-1");
     btnWhats.href = "#";
+    btnWhats.classList.remove("wiggle-cta");
   }
 
   // remove erros/avisos residuais
@@ -702,6 +704,7 @@ function configurarEventos() {
     btnWhats.setAttribute("aria-disabled", "true");
     btnWhats.setAttribute("tabindex", "-1");
     btnWhats.href = "#";
+    btnWhats.classList.remove("wiggle-cta"); // limpa animação
   }
   function mostrarWhats() {
     btnWhats.classList.remove("hide");
@@ -847,16 +850,17 @@ function configurarEventos() {
         servicoTxt = "Carro";
         setFoodInfo(false);
       } else {
-         if (tipo === "food") {
+        if (tipo === "food") {
           valor = calcularPrecoMotoFood(kmInt, paradasValidas.length, pedagioVal);
           servicoTxt = "Moto — FOOD (Somente mochila termica)";
+          extraObs = "Food mochila termica.";
           setFoodInfo(true);
         } else {
           valor = calcularPrecoMotoBau(kmInt, paradasValidas.length, pedagioVal);
           servicoTxt = "Moto — Baú";
           setFoodInfo(false);
-        }
-      }
+        }
+      }
 
       mDistEl.textContent  = `${kmInt} km`;
       mValorEl.textContent = fmtBRL(valor);
@@ -879,6 +883,7 @@ function configurarEventos() {
       btnWhats.setAttribute("aria-disabled", "false");
       btnWhats.removeAttribute("tabindex");
       mostrarWhats();
+      chamarAtencaoWhats(); // << balança e vibra
 
       // Marca que houve orçamento com este tipo de moto
       lastQuote = {
@@ -946,8 +951,54 @@ function clearInvalid(input){
   if(hint && hint.classList?.contains('err-hint')) hint.remove();
 }
 
+// ===================== Estilos injetados (CTA responsivo + wiggle) =====================
+function ensureEnhancementStyles(){
+  if (document.getElementById('enhance-cta-styles')) return;
+  const css = `
+    .actions{
+      display:grid;
+      grid-template-columns:repeat(auto-fit, minmax(160px,1fr));
+      gap:12px; align-items:stretch; margin-top:8px;
+    }
+    .actions .primary, .actions .cta.wa{
+      width:100%; display:flex; align-items:center; justify-content:center;
+      line-height:1.2; padding:12px 14px; white-space:normal; text-align:center;
+      font-size:clamp(14px,2.6vw,16px);
+    }
+    @media (max-width:380px){ .actions{ grid-template-columns:1fr; } }
+    @keyframes wiggle-cta{
+      0%{transform:translateX(0) rotate(0)}10%{transform:translateX(-2px) rotate(-2deg)}
+      20%{transform:translateX(3px) rotate(2deg)}30%{transform:translateX(-4px) rotate(-3deg)}
+      40%{transform:translateX(4px) rotate(3deg)}50%{transform:translateX(-3px) rotate(-2deg)}
+      60%{transform:translateX(3px) rotate(2deg)}70%{transform:translateX(-2px) rotate(-1.5deg)}
+      80%{transform:translateX(2px) rotate(1.5deg)}90%{transform:translateX(-1px) rotate(-1deg)}
+      100%{transform:translateX(0) rotate(0)}
+    }
+    .wiggle-cta{ animation: wiggle-cta .9s ease both; animation-iteration-count:3; }
+    @media (prefers-reduced-motion: reduce){ .wiggle-cta{ animation:none; } }
+  `;
+  const style = document.createElement('style');
+  style.id = 'enhance-cta-styles';
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+
+// ===================== Botão do Whats — chamar atenção =====================
+function chamarAtencaoWhats(){
+  const btnWhats = document.getElementById("btnWhats");
+  if (!btnWhats) return;
+  // reaplica a animação
+  btnWhats.classList.remove('wiggle-cta');
+  void btnWhats.offsetWidth; // reflow
+  btnWhats.classList.add('wiggle-cta');
+
+  // vibração (se suportado)
+  try { if (navigator.vibrate) navigator.vibrate([120,60,120,60,120]); } catch(_){}
+}
+
 // ===================== Init =====================
 function initOrcamento() {
+  ensureEnhancementStyles();
   ensureMotoTipoControl();
   configurarAutocomplete();
   configurarEventos();
