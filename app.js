@@ -596,7 +596,11 @@ function updateRules() {
   if (motoTipoRow) motoTipoRow.style.display = (servico === "moto") ? "" : "none";
 
   if (servico === "carro") {
-    hideRules(); // nada para carro
+    setFoodInfo(false);
+    showRules(`
+      <li>Ideal para volumes médios que não cabem na moto</li>
+      <li>Espera: R$ 0,70/min após 20 min</li>
+    `);
     return;
   }
 
@@ -605,6 +609,7 @@ function updateRules() {
     if (tipo === "food") {
       showRules(`
         <li>Mochila térmica</li>
+        <li> Ideal para entregas de alimentação</li>
         <li>Peso máx.: 20 kg</li>
         <li>Espera: R$ 0,60/min após 20 min</li>
       `);
@@ -613,6 +618,7 @@ function updateRules() {
       showRules(`
         <li>Baú máx.: 44 × 42 × 32 cm</li>
         <li>Peso máx.: 20 kg</li>
+        <li>Ideal para documentos, eletrônicos, roupas e pequenos volumes</Li>
         <li>Espera: R$ 0,60/min após 15 min</li>
       `);
       setFoodInfo(false);
