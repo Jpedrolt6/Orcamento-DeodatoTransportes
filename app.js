@@ -178,12 +178,13 @@ async function placesNewDetails(placeId, language = "pt-BR") {
 
 // ---------- Regras de preço ----------
 function calcularPrecoMotoBau(kmInt, qtdParadas, pedagio = 0) {
-  // Baú — sua tabela original
+  // Baú — TABELA CONFIRMADA
   let base = 0;
   if (kmInt <= 5) base = 40;
   else if (kmInt <= 12) base = 45;
-  else if (kmInt <= 85) base = 20 + (2 * kmInt);
-  else base = 190 + (kmInt - 85) * 3;
+    else if (kmInt <= 15) base = 50;
+  else if (kmInt <= 80) base = 20 + (2 * kmInt);
+  else base = 180 + (kmInt - 80) * 3;
 
   const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 5;
   const total = base + taxaParadas + (Number(pedagio) || 0);
@@ -191,16 +192,16 @@ function calcularPrecoMotoBau(kmInt, qtdParadas, pedagio = 0) {
 }
 
 function calcularPrecoMotoFood(kmInt, qtdParadas, pedagio = 0) {
-  // FOOD (mochila termica) — 0–5,9: 45 • 6–11,9: 50 • 12–16: 55
-  // 17–90: 2,50/km • >90: 3,00/km  | +R$5 por parada
+  // FOOD (mochila térmica) — TABELA CONFIRMADA
   let base = 0;
-  if (kmInt <= 5) base = 45;           // 0–5,9
-  else if (kmInt <= 12) base = 50;     // 6–11,9
-  else if (kmInt <= 16) base = 55;     // 12–16
-  else if (kmInt <= 90) base = 30 + (2 * kmInt)
-  else base = 3.0 * kmInt;         
+  if (kmInt <= 5) base = 45;               // 0–5,9
+  else if (kmInt <= 12) base = 50;         // 6–11,9
+  else if (kmInt <= 16) base = 55;         // 12–16
+  else if (kmInt <= 80) base = 30 + (2 * kmInt); 
+   else base = 190 + (kmInt - 80) * 3;
 
-  const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 5;
+
+  const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 5; // +R$5 por parada
   const total = base + taxaParadas + (Number(pedagio) || 0);
   return Math.max(0, Math.round(total));
 }
@@ -226,7 +227,7 @@ function setFoodInfo(show) {
     info = document.createElement('div');
     info.id = 'foodInfo';
     info.setAttribute('aria-live', 'polite');
-    info.style.cssText = 'padding:12px 14px;border:1px solid #2a3342;background:#0d131b;border-radius:12px;color:#cfe3ff;font-size:13px;line-height:1.35;';
+    info.style.cssText = 'padding:12px 14px;border:1px solid #2a3342;background:#0d131b;border-radius:12px;color:#cfe3ff;font-size:13px;line-height:1.35;margin-top:6px;';
     info.innerHTML = `
       <div style="font-weight:700; margin-bottom:6px;">Observação — FOOD</div>
       <div>Serviços de alimentação têm valores diferenciados devido à espera em restaurantes e ao maior risco de avarias no transporte em mochila térmica.</div>
@@ -513,7 +514,7 @@ function ensureMotoTipoControl() {
     <label for="motoTipo">Tipo de Moto</label>
     <select id="motoTipo">
       <option value="">Selecione…</option>
-      <option value="bau">Baú</option>
+      <option value="bau">Baú </option>
       <option value="food">FOOD (mochila termica)</option>
     </select>
   `;
@@ -646,14 +647,7 @@ function limparEnderecosInputs() {
   if (mValorEl) mValorEl.textContent = "—";
 
   // esconde Whats
-  const btnWhats = document.getElementById("btnWhats");
-  if (btnWhats) {
-    btnWhats.classList.add("hide");
-    btnWhats.setAttribute("aria-disabled", "true");
-    btnWhats.setAttribute("tabindex", "-1");
-    btnWhats.href = "#";
-    btnWhats.classList.remove("wiggle-cta");
-  }
+  esconderWhats();
 
   // remove erros/avisos residuais
   clearInvalid(document.getElementById('origem'));
@@ -661,6 +655,92 @@ function limparEnderecosInputs() {
   document.querySelectorAll('[id^="parada-"]').forEach(clearInvalid);
   document.querySelectorAll(".add-num-pill-js").forEach(el => el.remove());
 }
+
+// ===================== Botão Whats — helpers (mostrar, esconder, rolar, vibrar/animar) =====================
+function getBtnWhats() {
+  return document.getElementById("btnWhats");
+}
+
+function esconderWhats() {
+  const btnWhats = getBtnWhats();
+  if (!btnWhats) return;
+  btnWhats.classList.add("hide");
+  btnWhats.classList.remove("show", "wpp-attention");
+  btnWhats.setAttribute("aria-disabled", "true");
+  btnWhats.setAttribute("tabindex", "-1");
+  btnWhats.href = "#";
+}
+
+function mostrarWhats() {
+  const btnWhats = getBtnWhats();
+  if (!btnWhats) return;
+  btnWhats.classList.remove("hide");
+  btnWhats.classList.add("show");
+  btnWhats.setAttribute("aria-disabled", "false");
+  btnWhats.removeAttribute("tabindex");
+}
+
+function scrollToWhats() {
+  const btnWhats = getBtnWhats();
+  if (!btnWhats) return;
+  // rola suavemente até o botão no painel de resumo
+  const y = btnWhats.getBoundingClientRect().top + window.scrollY - 80;
+  window.scrollTo({ top: y, behavior: 'smooth' });
+  // Alternativa:
+  // btnWhats.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// injeta CSS da animação (caso não exista no seu CSS)
+(function injectWppAttentionCSS(){
+  if (document.getElementById('wpp-attention-style')) return;
+  const css = `
+  @keyframes wpp-wobble {
+    0% { transform: translateX(0) rotate(0deg); }
+    10% { transform: translateX(-4px) rotate(-2deg); }
+    20% { transform: translateX(4px) rotate(2deg); }
+    30% { transform: translateX(-6px) rotate(-3deg); }
+    40% { transform: translateX(6px) rotate(3deg); }
+    50% { transform: translateX(-4px) rotate(-2deg); }
+    60% { transform: translateX(4px) rotate(2deg); }
+    70% { transform: translateX(-3px) rotate(-1.5deg); }
+    80% { transform: translateX(3px) rotate(1.5deg); }
+    90% { transform: translateX(-2px) rotate(-1deg); }
+    100% { transform: translateX(0) rotate(0deg); }
+  }
+  .wpp-attention {
+    animation: wpp-wobble 0.9s ease both;
+  }`;
+  const style = document.createElement('style');
+  style.id = 'wpp-attention-style';
+  style.textContent = css;
+  document.head.appendChild(style);
+})();
+
+function pulseWhats() {
+  const btnWhats = getBtnWhats();
+  if (!btnWhats) return;
+
+  // animação visual forte (sempre funciona)
+  btnWhats.classList.remove('wpp-attention');
+  // forçar reflow pra reiniciar a animação
+  void btnWhats.offsetWidth;
+  btnWhats.classList.add('wpp-attention');
+
+  // vibração no mobile (HTTPS + gesto do usuário ajudam)
+  try {
+    if (navigator.vibrate) {
+      // padrão agressivo (total ~1.5s)
+      navigator.vibrate([80, 60, 80, 60, 120, 60, 80]);
+    }
+  } catch { /* ignora se não suportar */ }
+}
+
+// vibra também se o usuário tocar no botão (para garantir em mais navegadores)
+document.addEventListener('pointerdown', (ev) => {
+  const btn = ev.target?.closest?.('#btnWhats');
+  if (!btn) return;
+  try { if (navigator.vibrate) navigator.vibrate([40, 40, 80]); } catch {}
+}, { passive: true });
 
 // ===================== Cálculo e UI =====================
 function configurarEventos() {
@@ -674,8 +754,9 @@ function configurarEventos() {
   const servicoSel  = document.getElementById("servico");
   const motoTipoSel = document.getElementById("motoTipo");
 
-  // garantir que regras começam escondidas
+  // garantir que regras começam escondidas e botão Whats também
   hideRules();
+  esconderWhats();
 
   // trocar serviço/tipo → atualizar regras
   if (servicoSel) servicoSel.addEventListener("change", updateRules);
@@ -699,53 +780,40 @@ function configurarEventos() {
     });
   }
 
-  function esconderWhats() {
-    btnWhats.classList.add("hide");
-    btnWhats.setAttribute("aria-disabled", "true");
-    btnWhats.setAttribute("tabindex", "-1");
-    btnWhats.href = "#";
-    btnWhats.classList.remove("wiggle-cta"); // limpa animação
-  }
-  function mostrarWhats() {
-    btnWhats.classList.remove("hide");
-  }
-
-  esconderWhats();
-
-  btnWhats.addEventListener("click", (e)=>{
+  btnWhats?.addEventListener("click", (e)=>{
     if (btnWhats.getAttribute("aria-disabled") === "true") e.preventDefault();
   });
 
-  btnLimpar.addEventListener("click", () => {
+  btnLimpar?.addEventListener("click", () => {
     // limpar tudo geral (mantém seleção atual, só zera motoTipo para "Selecione…")
     const origemInput  = document.getElementById("origem");
     const destinoInput = document.getElementById("destino");
     const motoTipoSel  = document.getElementById("motoTipo");
-    origemInput.value = "";
-    destinoInput.value = "";
+    if (origemInput) origemInput.value = "";
+    if (destinoInput) destinoInput.value = "";
     if (motoTipoSel) motoTipoSel.selectedIndex = 0;
 
     origemPlace = null;
     destinoPlace = null;
 
     const contParadas = document.getElementById("paradas");
-    contParadas.innerHTML = "";
+    if (contParadas) contParadas.innerHTML = "";
     paradasPlaces = [];
     contadorParadas = 0;
 
-    mDistEl.textContent  = "—";
-    mValorEl.textContent = "—";
+    if (mDistEl)  mDistEl.textContent  = "—";
+    if (mValorEl) mValorEl.textContent = "—";
 
     document.querySelectorAll(".add-num-pill-js").forEach(el => el.remove());
 
     esconderWhats();
-    origemInput.focus();
+    origemInput?.focus();
 
     updateRules(); // mantém regras escondidas
     lastQuote = { hasQuote: false, servico: null, motoTipo: null };
   });
 
-  btnCalcular.addEventListener("click", async (e) => {
+  btnCalcular?.addEventListener("click", async (e) => {
     e.preventDefault();
 
     // ====== Validação coletiva ======
@@ -825,9 +893,10 @@ function configurarEventos() {
       }
     }
 
+    // Se houve qualquer erro: limpa métricas, esconde Whats, NÃO desce a tela
     if (anyError) {
-      mDistEl.textContent  = "—";
-      mValorEl.textContent = "—";
+      if (mDistEl)  mDistEl.textContent  = "—";
+      if (mValorEl) mValorEl.textContent = "—";
       esconderWhats();
       return;
     }
@@ -861,8 +930,8 @@ function configurarEventos() {
         }
       }
 
-      mDistEl.textContent  = `${kmInt} km`;
-      mValorEl.textContent = fmtBRL(valor);
+      if (mDistEl)  mDistEl.textContent  = `${kmInt} km`;
+      if (mValorEl) mValorEl.textContent = fmtBRL(valor);
 
       clearInvalid(document.getElementById('origem'));
       clearInvalid(document.getElementById('destino'));
@@ -878,11 +947,14 @@ function configurarEventos() {
         extraObs
       );
 
-      btnWhats.href = `https://api.whatsapp.com/send?phone=${WHATS_NUM}&text=${textoURL}`;
-      btnWhats.setAttribute("aria-disabled", "false");
-      btnWhats.removeAttribute("tabindex");
+      const btnWhats = getBtnWhats();
+      if (btnWhats) {
+        btnWhats.href = `https://api.whatsapp.com/send?phone=${WHATS_NUM}&text=${textoURL}`;
+      }
       mostrarWhats();
-      chamarAtencaoWhats(); // << balança e vibra
+      // Chama atenção + rola pra baixo
+      pulseWhats();
+      scrollToWhats();
 
       // Marca que houve orçamento com este tipo de moto
       lastQuote = {
@@ -950,57 +1022,12 @@ function clearInvalid(input){
   if(hint && hint.classList?.contains('err-hint')) hint.remove();
 }
 
-// ===================== Estilos injetados (CTA responsivo + wiggle) =====================
-function ensureEnhancementStyles(){
-  if (document.getElementById('enhance-cta-styles')) return;
-  const css = `
-    .actions{
-      display:grid;
-      grid-template-columns:repeat(auto-fit, minmax(160px,1fr));
-      gap:12px; align-items:stretch; margin-top:8px;
-    }
-    .actions .primary, .actions .cta.wa{
-      width:100%; display:flex; align-items:center; justify-content:center;
-      line-height:1.2; padding:12px 14px; white-space:normal; text-align:center;
-      font-size:clamp(14px,2.6vw,16px);
-    }
-    @media (max-width:380px){ .actions{ grid-template-columns:1fr; } }
-    @keyframes wiggle-cta{
-      0%{transform:translateX(0) rotate(0)}10%{transform:translateX(-2px) rotate(-2deg)}
-      20%{transform:translateX(3px) rotate(2deg)}30%{transform:translateX(-4px) rotate(-3deg)}
-      40%{transform:translateX(4px) rotate(3deg)}50%{transform:translateX(-3px) rotate(-2deg)}
-      60%{transform:translateX(3px) rotate(2deg)}70%{transform:translateX(-2px) rotate(-1.5deg)}
-      80%{transform:translateX(2px) rotate(1.5deg)}90%{transform:translateX(-1px) rotate(-1deg)}
-      100%{transform:translateX(0) rotate(0)}
-    }
-    .wiggle-cta{ animation: wiggle-cta .9s ease both; animation-iteration-count:3; }
-    @media (prefers-reduced-motion: reduce){ .wiggle-cta{ animation:none; } }
-  `;
-  const style = document.createElement('style');
-  style.id = 'enhance-cta-styles';
-  style.textContent = css;
-  document.head.appendChild(style);
-}
-
-// ===================== Botão do Whats — chamar atenção =====================
-function chamarAtencaoWhats(){
-  const btnWhats = document.getElementById("btnWhats");
-  if (!btnWhats) return;
-  // reaplica a animação
-  btnWhats.classList.remove('wiggle-cta');
-  void btnWhats.offsetWidth; // reflow
-  btnWhats.classList.add('wiggle-cta');
-
-  // vibração (se suportado)
-  try { if (navigator.vibrate) navigator.vibrate([120,60,120,60,120]); } catch(_){}
-}
-
 // ===================== Init =====================
 function initOrcamento() {
-  ensureEnhancementStyles();
   ensureMotoTipoControl();
   configurarAutocomplete();
   configurarEventos();
   hideRules(); // começa sem regras
+  esconderWhats(); // começa sem o botão
 }
 window.initOrcamento = initOrcamento;
