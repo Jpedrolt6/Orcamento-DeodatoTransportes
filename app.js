@@ -11,7 +11,7 @@ let contadorParadas = 0;
 
 // ===== Economia: parâmetros ajustáveis =====
 const MIN_CHARS       = 3;
-const DEBOUNCE_MS     = 100;   // responsivo e econômico
+const DEBOUNCE_MS     = 100;
 const MAX_PREDICTIONS = 8;
 const MIN_SUGGESTIONS = 1;
 const COUNTRY_CODE    = "br";
@@ -42,6 +42,42 @@ function aplicarBloqueioNosCamposBasicos() {
   bloquearEnter(document.getElementById('destino'));
 }
 
+// ====== Infos extras por ponto (textarea “só com linhas”) ======
+function makeLinedTextarea(id, placeholder) {
+  const ta = document.createElement("textarea");
+  ta.id = id;
+  ta.className = "addr-info";
+  ta.rows = 1;
+  ta.placeholder = placeholder || "Adicionar informações";
+  ta.style.cssText = `
+    margin-top:6px;width:100%;resize:none;color:#e9eef7;
+    background:
+      linear-gradient(transparent, transparent 20px, rgba(255,255,255,0.10) 20px) repeat-y;
+    background-size: 100% 24px;
+    background-color: transparent;
+    border: none; border-bottom: 0px dashed #000000ff;
+    border-radius: 0; padding: 4px 2px 4px 0;
+    font-family: inherit; font-size: 13px; line-height: 24px;
+    outline: none; box-shadow: none; overflow:hidden;
+  `;
+  // auto-grow conforme digita
+  const autoGrow = () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
+  ta.addEventListener('input', autoGrow);
+  setTimeout(autoGrow, 0);
+  bloquearEnter(ta);
+  return ta;
+}
+function ensureInfoField(afterInputEl, infoId, placeholder) {
+  if (!afterInputEl || !infoId) return;
+  if (document.getElementById(infoId)) return;
+  const ta = makeLinedTextarea(infoId, placeholder);
+  afterInputEl.insertAdjacentElement("afterend", ta);
+}
+function getInfoValue(infoId) {
+  const el = document.getElementById(infoId);
+  return (el && el.value || "").trim();
+}
+
 // Detector de número de rua
 function hasStreetNumber(text) {
   const s = String(text || "");
@@ -54,55 +90,31 @@ function hasStreetNumber(text) {
 //               🔖 Favoritos simples (localStorage, sem visual extra)
 // ---------------------------------------------------------------------------
 const FAV_KEY = "favAddrV1";
-
 const Favorites = {
   _list: [],
-
-  _load() {
-    try { this._list = JSON.parse(localStorage.getItem(FAV_KEY)) || []; }
-    catch { this._list = []; }
-  },
-
-  _save() {
-    try { localStorage.setItem(FAV_KEY, JSON.stringify(this._list)); } catch {}
-  },
-
-  _norm(s) {
-    return String(s || "").trim().toLowerCase();
-  },
-
+  _load() { try { this._list = JSON.parse(localStorage.getItem(FAV_KEY)) || []; } catch { this._list = []; } },
+  _save() { try { localStorage.setItem(FAV_KEY, JSON.stringify(this._list)); } catch {} },
+  _norm(s) { return String(s || "").trim().toLowerCase(); },
   addFromPlace(place) {
     if (!place?.formatted_address) return;
     const addr = place.formatted_address;
     const lat = place?.geometry?.location?.lat ?? place?.geometry?.location?.latitude;
     const lng = place?.geometry?.location?.lng ?? place?.geometry?.location?.longitude;
     if (lat == null || lng == null) return;
-
     this._load();
     const key = this._norm(addr);
     const i = this._list.findIndex(x => this._norm(x.addr) === key);
-    if (i >= 0) {
-      this._list[i].count = (this._list[i].count || 0) + 1;
-      this._list[i].last  = Date.now();
-      this._list[i].lat   = lat;
-      this._list[i].lng   = lng;
-    } else {
-      this._list.push({ addr, lat, lng, count: 1, last: Date.now() });
-    }
-    // mantém lista enxuta
-    this._list.sort((a,b)=> (b.count-a.count) || (b.last-a.last));
+    if (i >= 0) { this._list[i].count = (this._list[i].count || 0) + 1; this._list[i].last = Date.now(); this._list[i].lat = lat; this._list[i].lng = lng; }
+    else { this._list.push({ addr, lat, lng, count: 1, last: Date.now() }); }
+    this._list.sort((a,b)=> (b.count-a.count) || (b.last - a.last));
     if (this._list.length > 50) this._list.length = 50;
     this._save();
   },
-
-  // retorna sugestões no formato da autocomplete (com flag favPlace)
   matches(query = "", limit = 5) {
     this._load();
     const q = this._norm(query);
-    const arr = q
-      ? this._list.filter(x => this._norm(x.addr).includes(q))
-      : this._list.slice();
-    arr.sort((a,b)=> (b.count-a.count) || (b.last-a.last));
+    const arr = q ? this._list.filter(x => this._norm(x.addr).includes(q)) : this._list.slice();
+    arr.sort((a,b)=> (b.count-a.count) || (b.last - a.last));
     const top = arr.slice(0, limit);
     return top.map((rec, idx) => {
       const parts = rec.addr.split(", ");
@@ -111,7 +123,7 @@ const Favorites = {
       return {
         description: rec.addr,
         structured_formatting: { main_text: main, secondary_text: sec },
-        place_id: "fav:" + idx + ":" + rec.last, // id único o suficiente
+        place_id: "fav:" + idx + ":" + rec.last,
         favPlace: {
           formatted_address: rec.addr,
           geometry: { location: { lat: rec.lat, lng: rec.lng } }
@@ -126,7 +138,6 @@ const Favorites = {
 // ---------------------------------------------------------------------------
 const PLACES_API_KEY = "AIzaSyAhGvrR_Gp4e0ROB1BInjNBSUQdHEh6ews";
 const PLACES_BASE = "https://places.googleapis.com/v1";
-
 const SP_CENTER = { latitude: -23.55052, longitude: -46.633308 };
 const SP_BIAS   = { circle: { center: SP_CENTER, radius: 50000 } };
 
@@ -144,15 +155,10 @@ function newSessionToken() {
   return "tok-" + Date.now() + "-" + Math.random().toString(36).slice(2);
 }
 function newHeaders(fieldMask, sessionToken) {
-  const h = {
-    "Content-Type": "application/json",
-    "X-Goog-Api-Key": PLACES_API_KEY,
-    "X-Goog-FieldMask": fieldMask
-  };
+  const h = { "Content-Type": "application/json", "X-Goog-Api-Key": PLACES_API_KEY, "X-Goog-FieldMask": fieldMask };
   if (sessionToken) h["X-Goog-Session-Token"] = sessionToken;
   return h;
 }
-
 function normalizeNewSuggestions(resp) {
   const out = [];
   const list = resp?.suggestions || [];
@@ -163,11 +169,7 @@ function normalizeNewSuggestions(resp) {
     const secondary = typeof sf.secondaryText === "object" ? (sf.secondaryText?.text || "") : (sf.secondaryText || "");
     const description = [main, secondary].filter(Boolean).join(", ") || (p.text?.text || p.text || "");
     if (!p.placeId) continue;
-    out.push({
-      description,
-      structured_formatting: { main_text: main || description, secondary_text: secondary || "" },
-      place_id: p.placeId
-    });
+    out.push({ description, structured_formatting: { main_text: main || description, secondary_text: secondary || "" }, place_id: p.placeId });
   }
   return out;
 }
@@ -189,20 +191,9 @@ async function placesNewAutocomplete({ input, sessionToken, region = "br", langu
   try {
     if (_acAborter) _acAborter.abort();
     _acAborter = new AbortController();
-
-    const body = {
-      input,
-      languageCode: language,
-      regionCode: region,
-      includeQueryPredictions: true,
-      locationBias: SP_BIAS
-    };
-
+    const body = { input, languageCode: language, regionCode: region, includeQueryPredictions: true, locationBias: SP_BIAS };
     const res = await fetch(`${PLACES_BASE}/places:autocomplete`, {
-      method: "POST",
-      headers: newHeaders(FM_AUTOCOMPLETE, sessionToken),
-      body: JSON.stringify(body),
-      signal: _acAborter.signal
+      method: "POST", headers: newHeaders(FM_AUTOCOMPLETE, sessionToken), body: JSON.stringify(body), signal: _acAborter.signal
     });
     if (!res.ok) throw new Error("Autocomplete falhou: " + res.status);
     return await res.json();
@@ -211,17 +202,10 @@ async function placesNewAutocomplete({ input, sessionToken, region = "br", langu
     return { suggestions: [] };
   }
 }
-
 async function placesNewSearchText(textQuery, language = "pt-BR") {
   try {
     const res = await fetch(`${PLACES_BASE}/places:searchText`, {
-      method: "POST",
-      headers: newHeaders(FM_SEARCH),
-      body: JSON.stringify({
-        textQuery,
-        languageCode: language,
-        locationBias: SP_BIAS
-      })
+      method: "POST", headers: newHeaders(FM_SEARCH), body: JSON.stringify({ textQuery, languageCode: language, locationBias: SP_BIAS })
     });
     if (!res.ok) throw new Error("SearchText falhou: " + res.status);
     return await res.json();
@@ -229,23 +213,16 @@ async function placesNewSearchText(textQuery, language = "pt-BR") {
     return { places: [] };
   }
 }
-
 async function placesNewDetails(placeId, language = "pt-BR") {
   const url = `${PLACES_BASE}/places/${encodeURIComponent(placeId)}?languageCode=${encodeURIComponent(language)}`;
   const res = await fetch(url, { headers: newHeaders(FM_DETAILS) });
   if (!res.ok) throw new Error("Details falhou: " + res.status);
   const data = await res.json();
-
   const lat = data?.location?.latitude;
   const lng = data?.location?.longitude;
   const formatted = data?.formattedAddress || data?.displayName?.text || "";
-
-  return {
-    formatted_address: formatted,
-    geometry: { location: (lat != null && lng != null) ? { lat, lng } : null }
-  };
+  return { formatted_address: formatted, geometry: { location: (lat != null && lng != null) ? { lat, lng } : null } };
 }
-// ---------------------------------------------------------------------------
 
 // ---------- Regras de preço ----------
 function calcularPrecoMotoBau(kmInt, qtdParadas, pedagio = 0) {
@@ -255,12 +232,10 @@ function calcularPrecoMotoBau(kmInt, qtdParadas, pedagio = 0) {
   else if (kmInt <= 15) base = 50;
   else if (kmInt <= 80) base = 20 + (2 * kmInt);
   else base = 180 + (kmInt - 80) * 3;
-
   const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 5;
   const total = base + taxaParadas + (Number(pedagio) || 0);
   return Math.max(0, Math.round(total));
 }
-
 function calcularPrecoMotoFood(kmInt, qtdParadas, pedagio = 0) {
   let base = 0;
   if (kmInt <= 5) base = 45;
@@ -268,12 +243,10 @@ function calcularPrecoMotoFood(kmInt, qtdParadas, pedagio = 0) {
   else if (kmInt <= 16) base = 55;
   else if (kmInt <= 80) base = 30 + (2 * kmInt);
   else base = 190 + (kmInt - 80) * 3;
-
   const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 5;
   const total = base + taxaParadas + (Number(pedagio) || 0);
   return Math.max(0, Math.round(total));
 }
-
 function calcularPrecoCarro(kmInt, qtdParadas, pedagio = 0) {
   let base = 0;
   if (kmInt <= 12) base = 100;
@@ -285,31 +258,23 @@ function calcularPrecoCarro(kmInt, qtdParadas, pedagio = 0) {
   const total = base + taxaParadas + (Number(pedagio) || 0);
   return Math.max(0, Math.round(total));
 }
-
-// ---------- Utilitário p/ degrau 0–30 km ----------
 function tarifaDegrau(kmInt, ate30Valor, pos30PorKm){
   const k = Math.max(0, Number(kmInt) || 0);
   if (k <= 30) return ate30Valor;
   return ate30Valor + pos30PorKm * (k - 30);
 }
-
-// ---------- Fiorino ----------
 function calcularPrecoFiorino(kmInt, qtdParadas = 0, pedagio = 0){
   const base = tarifaDegrau(kmInt, 190, 4);
-  const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 10; // segue padrão do carro
+  const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 10;
   const total = base + taxaParadas + (Number(pedagio) || 0);
   return Math.max(0, Math.round(total));
 }
-
-// ---------- HR / Ducato ----------
 function calcularPrecoHRDucato(kmInt, qtdParadas = 0, pedagio = 0){
   const base = tarifaDegrau(kmInt, 290, 5);
   const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 20;
   const total = base + taxaParadas + (Number(pedagio) || 0);
   return Math.max(0, Math.round(total));
 }
-
-// ---------- Iveco / Master ----------
 function calcularPrecoIvecoMaster(kmInt, qtdParadas = 0, pedagio = 0){
   const base = tarifaDegrau(kmInt, 360, 5);
   const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 20;
@@ -339,18 +304,37 @@ function setFoodInfo(show) {
 
 // ---------- Monta mensagem WhatsApp ----------
 function montarMensagem(origem, destino, kmInt, valor, servicoTxt, paradasList = [], extraObs = "") {
-  const linhas = ["*RETIRADA*","📍 " + origem,""];
+  const linhas = [];
+  const origemInfo = getInfoValue("origemInfo");
+  linhas.push("*RETIRADA*","📍 " + origem);
+  if (origemInfo) linhas.push("📝 " + origemInfo);
+  linhas.push("");
+
   if (paradasList.length) {
     paradasList.forEach((p, i) => {
       const end = p?.formatted_address || p?.description || "";
-      if (end) linhas.push(`*PARADA ${i + 1}*`, "📍 " + end, "");
+      const info = getInfoValue(`paradaInfo-${i}`);
+      if (end) {
+        linhas.push(`*PARADA ${i + 1}*`, "📍 " + end);
+        if (info) linhas.push("📝 " + info);
+        linhas.push("");
+      }
     });
   }
-  linhas.push("*ENTREGA*", "📍 " + destino, "", `*Tipo de veículo:* ${servicoTxt}`);
+
+  if (destino) {
+    const destinoInfo = getInfoValue("destinoInfo");
+    linhas.push("*ENTREGA*","📍 " + destino);
+    if (destinoInfo) linhas.push("📝 " + destinoInfo);
+    linhas.push("");
+  }
+
+  linhas.push(`*Tipo de veículo:* ${servicoTxt}`);
   if (extraObs) linhas.push(extraObs);
   linhas.push("", "🛣️ Km " + kmInt, "💵 " + fmtBRL(valor));
+
   return encodeURIComponent(linhas.join("\n"));
-} 
+}
 
 // ===================== debounce =====================
 function debounce(fn, wait = 300) {
@@ -426,14 +410,9 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
   const list = document.createElement("div");
   list.className = "suggestions";
   Object.assign(list.style, {
-    position: "absolute",
-    zIndex: "9999",
-    background: "#0b0f14",
-    border: "1px solid #1d2634",
-    borderRadius: "12px",
-    padding: "6px",
-    boxShadow: "0 10px 24px rgba(0,0,0,.35)",
-    display: "none",
+    position: "absolute", zIndex: "9999", background: "#0b0f14",
+    border: "1px solid #1d2634", borderRadius: "12px", padding: "6px",
+    boxShadow: "0 10px 24px rgba(0,0,0,.35)", display: "none",
   });
   document.body.appendChild(list);
 
@@ -460,47 +439,22 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
       item.type = "button";
       item.className = "suggestions__item";
       Object.assign(item.style, {
-        width: "100%",
-        textAlign: "left",
-        padding: "10px 12px",
-        border: "0",
-        borderRadius: "10px",
-        background: "transparent",
-        color: "#e9eef7",
-        cursor: "pointer",
-        fontFamily: "inherit",
+        width: "100%", textAlign: "left", padding: "10px 12px", border: "0",
+        borderRadius: "10px", background: "transparent", color: "#e9eef7", cursor: "pointer", fontFamily: "inherit",
       });
-
-      const mainText = p.structured_formatting?.main_text || p.description || "";
-      const secondaryText = p.structured_formatting?.secondary_text || "";
-
-      item.innerHTML = `
-        <div style="font-weight:600;display:flex;align-items:center;gap:8px">
-          <span class="suggestions__main">${mainText}</span>
-        </div>
-        <div class="suggestions__sec" style="font-size:12px;color:#a9b2c3">${secondaryText || ""}</div>
-      `;
 
       item.addEventListener("click", async () => {
         const finish = (place) => {
           inputEl.value = place.formatted_address || p.description;
           clearInvalid(inputEl);
           if (!hasStreetNumber(inputEl.value)) showAddNumeroHint(inputEl);
-
           hideList();
           sessionToken = newSessionToken();
-
-          // 🔖 salva favorito
           Favorites.addFromPlace(place);
-
           try { onPlaceChosen && onPlaceChosen(place); } catch {}
         };
 
-        // Se veio de favorito, já temos lat/lng → não chama Details
-        if (p.favPlace) {
-          finish(p.favPlace);
-          return;
-        }
+        if (p.favPlace) { finish(p.favPlace); return; }
 
         const cached = detailsCache.get(p.place_id);
         const fresh  = cached && (Date.now() - cached.ts < CACHE_TTL_MS) ? cached.place : null;
@@ -514,18 +468,24 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
           } else {
             hideList();
           }
-        } catch {
-          hideList();
-        }
+        } catch { hideList(); }
       });
+
+      // conteúdo visual do item
+      const mainText = p.structured_formatting?.main_text || p.description || "";
+      const secondaryText = p.structured_formatting?.secondary_text || "";
+      item.innerHTML = `
+        <div style="font-weight:600;display:flex;align-items:center;gap:8px">
+          <span class="suggestions__main">${mainText}</span>
+        </div>
+        <div class="suggestions__sec" style="font-size:12px;color:#a9b2c3">${secondaryText || ""}</div>
+      `;
 
       list.appendChild(item);
     });
-    showList();
-    positionList();
+    showList(); positionList();
   }
 
-  // monta lista: favoritos (se houver) + predictions do Google
   async function buildAndRender(query) {
     const favs = Favorites.matches(query, 5);
     let norm = [];
@@ -537,31 +497,19 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
         norm = cached.predictions;
       } else {
         try {
-          const data = await placesNewAutocomplete({
-            input: q,
-            sessionToken,
-            region: COUNTRY_CODE,
-            language: "pt-BR"
-          });
+          const data = await placesNewAutocomplete({ input: q, sessionToken, region: COUNTRY_CODE, language: "pt-BR" });
           norm = normalizeNewSuggestions(data);
-
           if (!norm.length || norm.length < MIN_SUGGESTIONS) {
-            try {
-              const st = await placesNewSearchText(q, "pt-BR");
-              const extra = normalizeSearchToSuggestions(st);
-              const seen = new Set(norm.map(x => x.place_id));
-              for (const e of extra) if (!seen.has(e.place_id)) norm.push(e);
-            } catch {/* noop */}
+            const st = await placesNewSearchText(q, "pt-BR");
+            const extra = normalizeSearchToSuggestions(st);
+            const seen = new Set(norm.map(x => x.place_id));
+            for (const e of extra) if (!seen.has(e.place_id)) norm.push(e);
           }
-
           predCache.set(q, { ts: Date.now(), predictions: norm });
-        } catch {
-          norm = [];
-        }
+        } catch { norm = []; }
       }
     }
 
-    // merge: favoritos + Google, sem duplicar endereços iguais
     const seenAddr = new Set();
     const merged = [];
     for (const a of favs) {
@@ -572,26 +520,24 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
       const key = (a.description || "").toLowerCase();
       if (!seenAddr.has(key)) { merged.push(a); seenAddr.add(key); }
     }
-
     renderPredictions(merged);
   }
 
-  const requestPredictions = debounce(() => {
-    buildAndRender(inputEl.value);
-  }, DEBOUNCE_MS);
+  const requestPredictions = debounce(() => { buildAndRender(inputEl.value); }, DEBOUNCE_MS);
 
   inputEl.addEventListener("focus", () => {
-    positionList();
     const v = inputEl.value.trim();
     if (!v) {
       const favs = Favorites.matches("", 8);
-      if (favs.length) renderPredictions(favs);
+      if (favs.length) {
+        positionList();
+        renderPredictions(favs);
+      }
     }
   });
 
-  // Navegação via teclado
   inputEl.addEventListener("keydown", (ev) => {
-    const items = list.querySelectorAll("button.suggestions__item");
+    const items = list.querySelectorAll(".suggestions__item");
     if (ev.key === "ArrowDown" && items.length) {
       ev.preventDefault();
       activeIndex = (activeIndex + 1) % items.length;
@@ -611,7 +557,6 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
     }
   });
 
-  // Clique antes do blur
   document.addEventListener('pointerdown', (ev) => {
     const btn = ev.target?.closest?.('.suggestions__item');
     if (!btn) return;
@@ -623,7 +568,6 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
   inputEl.addEventListener("input", () => {
     requestPredictions();
     clearInvalid(inputEl);
-
     if (inputEl.id === 'origem') origemPlace = null;
     else if (inputEl.id === 'destino') destinoPlace = null;
     else if (inputEl.id?.startsWith('parada-')) {
@@ -637,25 +581,102 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
 // ===================== Injeta seletor “Tipo de Moto” =====================
 function ensureMotoTipoControl() {
   if (document.getElementById('motoTipo')) return;
-
-  const row = document.querySelector('.row');
-  if (!row) return;
-
+  const row = document.querySelector('.row'); if (!row) return;
   const field = document.createElement("div");
   field.className = "field small";
   field.id = "motoTipoRow";
-  field.style.display = "none"; // escondido até escolher “Motoboy”
+  field.style.display = "none";
   field.innerHTML = `
     <label for="motoTipo">Tipo de Moto</label>
     <select id="motoTipo">
       <option value="">Selecione…</option>
       <option value="bau">Baú</option>
-      <option value="food">FOOD (mochila termica)</option>
+      <option value="food">FOOD (mochila térmica)</option>
     </select>
   `;
   const servField = document.getElementById('servico')?.closest('.field');
-  if (servField && servField.parentElement === row) servField.after(field);
-  else row.appendChild(field);
+  if (servField && servField.parentElement === row) servField.after(field); else row.appendChild(field);
+}
+
+// ===================== UI da Otimização (botão e container) =====================
+function ensureOptimizeUI() {
+  const actions = document.querySelector(".actions");
+  if (actions) {
+    // remove duplicados de “Rota Otimizada”
+    const sameTextBtns = Array.from(actions.querySelectorAll("button")).filter(b => (b.textContent||"").trim().toLowerCase() === "rota otimizada");
+    sameTextBtns.slice(1).forEach(b => b.remove());
+    let btn = sameTextBtns[0] || document.getElementById("btnOtimizar");
+    if (!btn) {
+      btn = document.createElement("button");
+      btn.type = "button";
+      btn.id = "btnOtimizar";
+      btn.className = "outline";
+      btn.textContent = "Rota Otimizada";
+      btn.style.marginLeft = "8px";
+      actions.appendChild(btn);
+    } else {
+      btn.id = "btnOtimizar";
+    }
+
+    // subtítulo solicitado
+    let sub = document.getElementById("otSub");
+    if (!sub) {
+      sub = document.createElement("div");
+      sub.id = "otSub";
+      sub.textContent = "IDEAL PARA CORRIDAS COM BASTANTES PARADAS.";
+      sub.style.cssText = "display:block;margin:4px 0 0 8px;font-size:12px;color:#a9b2c3;font-weight:600;";
+      actions.appendChild(sub);
+    }
+  }
+  if (!document.getElementById("otimizacaoResumo")) {
+    const resumoBox = document.getElementById("resumo");
+    if (resumoBox) {
+      const box = document.createElement("div");
+      box.id = "otimizacaoResumo";
+      box.className = "glass";
+      box.style.cssText = "display:none;margin-top:12px;padding:12px;border-radius:12px;border:1px solid #1d2634;background:#0b0f14;color:#e9eef7";
+      resumoBox.appendChild(box);
+    }
+  }
+  if (!document.getElementById("resumoLinkMaps")) {
+    const resumoBox = document.getElementById("resumo");
+    if (resumoBox) {
+      const link = document.createElement("a");
+      link.id = "resumoLinkMaps";
+      link.href = "#";
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = "Abrir no Google Maps";
+      link.style.cssText = "display:none;margin:10px 0 0;text-decoration:underline;color:#85b7ff;font-weight:600;";
+      resumoBox.insertBefore(link, document.getElementById("btnWhats"));
+    }
+  }
+}
+
+// ===================== Botão Voltar ao Topo =====================
+function ensureBackToTopUI(){
+  if (document.getElementById('btnToTop')) return;
+  const btn = document.createElement('button');
+  btn.id = 'btnToTop';
+  btn.type = 'button';
+  btn.setAttribute('aria-label','Voltar ao topo');
+  btn.innerHTML = '↑';
+  btn.style.cssText = `
+    position:fixed; right:20px; bottom:20px; width:44px; height:44px;
+    display:none; border-radius:9999px; border:1px solid #1d2634;
+    background:#0b0f14cc; color:#e9eef7; font-size:18px; font-weight:700;
+    cursor:pointer; z-index:99999; backdrop-filter: blur(4px);
+  `;
+  btn.addEventListener('click', ()=> window.scrollTo({ top:0, behavior:'smooth' }));
+  document.body.appendChild(btn);
+
+  const onScroll = () => {
+    const show = window.scrollY > 600;
+    btn.style.display = show ? 'grid' : 'none';
+    if (show) btn.style.placeItems = 'center';
+  };
+  window.addEventListener('scroll', onScroll, { passive:true });
+  onScroll();
 }
 
 // ===================== Autocomplete nos campos =====================
@@ -667,14 +688,12 @@ function configurarAutocomplete() {
 
   aplicarBloqueioNosCamposBasicos();
 
-  setupInputAutocomplete({
-    inputEl: origemInput,
-    onPlaceChosen: (place) => { origemPlace = place; }
-  });
-  setupInputAutocomplete({
-    inputEl: destinoInput,
-    onPlaceChosen: (place) => { destinoPlace = place; }
-  });
+  // Textareas de info (linhas) com exemplos profissionais
+  ensureInfoField(origemInput, "origemInfo", "Adicionar informações");
+  ensureInfoField(destinoInput, "destinoInfo", "Adicionar informações");
+
+  setupInputAutocomplete({ inputEl: origemInput,  onPlaceChosen: (place) => { origemPlace = place; } });
+  setupInputAutocomplete({ inputEl: destinoInput, onPlaceChosen: (place) => { destinoPlace = place; } });
 
   const btnAddParada = document.getElementById("btnAddParada");
   btnAddParada.addEventListener("click", () => adicionarParadaInput());
@@ -696,142 +715,78 @@ function adicionarParadaInput() {
   const input = document.getElementById(`parada-${idx}`);
   bloquearEnter(input);
 
-  setupInputAutocomplete({
-    inputEl: input,
-    onPlaceChosen: (place) => { paradasPlaces[idx] = place; }
-  });
+  // Campo de observação abaixo (linhas) — exemplo profissional
+  ensureInfoField(wrap.querySelector("input"), `paradaInfo-${idx}`, "Adicionar informações");
+
+  setupInputAutocomplete({ inputEl: input, onPlaceChosen: (place) => { paradasPlaces[idx] = place; } });
 }
 
 // ===================== Regras do serviço (UI dinâmica) =====================
 function hideRules() {
-  const rules = document.querySelector('.rules');
-  if (!rules) return;
-  const ul = rules.querySelector('ul');
-  if (ul) ul.innerHTML = "";
-  rules.style.display = 'none';
-  setFoodInfo(false);
+  const rules = document.querySelector('.rules'); if (!rules) return;
+  const ul = rules.querySelector('ul'); if (ul) ul.innerHTML = "";
+  rules.style.display = 'none'; setFoodInfo(false);
 }
 function showRules(htmlList) {
-  const rules = document.querySelector('.rules');
-  if (!rules) return;
-  const ul = rules.querySelector('ul');
-  if (!ul) return;
-  ul.innerHTML = htmlList;
-  rules.style.display = '';
+  const rules = document.querySelector('.rules'); if (!rules) return;
+  const ul = rules.querySelector('ul'); if (!ul) return;
+  ul.innerHTML = htmlList; rules.style.display = '';
 }
-
 function updateRules() {
   const servicoSel  = document.getElementById("servico");
   const motoTipoSel = document.getElementById("motoTipo");
   const motoTipoRow = document.getElementById("motoTipoRow");
-
   const servico = servicoSel?.value || "";
 
-  // mostra/oculta seletor de tipo de moto
   if (motoTipoRow) motoTipoRow.style.display = (servico === "moto") ? "" : "none";
 
   if (servico === "carro") {
-    showRules(`
-      <li>Ideal para caixas pequenas e médias, acima da capacidade da moto</li>
-      <li>Espera: R$ 0,70/min após 20 min</li>
-    `);
-    setFoodInfo(false);
-    return;
+    showRules(`<li>Ideal para caixas pequenas e médias, acima da capacidade da moto</li><li>Espera: R$ 0,70/min após 20 min</li>`);
+    setFoodInfo(false); return;
   }
-
   if (servico === "moto") {
     const tipo = motoTipoSel?.value || "";
     if (tipo === "food") {
-      showRules(`
-        <li>Mochila térmica</li>
-        <li>Ideal para entregas de alimentos</li>
-        <li>Peso máx.: 20 kg</li>
-        <li>Espera: R$ 0,60/min após 20 min</li>
-      `);
+      showRules(`<li>Mochila térmica</li><li>Ideal para entregas de alimentos</li><li>Peso máx.: 20 kg</li><li>Espera: R$ 0,60/min após 20 min</li>`);
       setFoodInfo(true);
     } else if (tipo === "bau") {
-      showRules(`
-        <li>Baú máx.: 44 × 42 × 32 cm</li>
-        <li>Peso máx.: 20 kg</li>
-        <li>Ideal para documentos, eletrônicos, roupas e pequenas encomendas</li>
-        <li>Espera: R$ 0,60/min após 15 min</li>
-      `);
+      showRules(`<li>Baú máx.: 44 × 42 × 32 cm</li><li>Peso máx.: 20 kg</li><li>Ideal para documentos, eletrônicos, roupas e pequenas encomendas</li><li>Espera: R$ 0,60/min após 15 min</li>`);
       setFoodInfo(false);
-    } else {
-      hideRules(); // não escolheu o tipo ainda
-    }
+    } else { hideRules(); }
     return;
   }
-
   if (servico === "fiorino") {
-    showRules(`
-      <li>Ideal para cargas fracionadas de medio porte</li>
-      <li>Melhor custo-benefício para cargas de até 600 kg</li>
-      <li>Dimensões máx.: 1,35 m alt. × 1,10 m larg. × 1,85 m comp.</li>
-      <li>Peso máx.: 600 kg</li>
-      <li>Picapes: Ideal para cargas alongadas (ex.: tubos, barras, perfis metálicos)</li>
-      <li> Espera: R$ 0,80/min após 20 min</li>
-    `);
+    showRules(`<li>Ideal para cargas fracionadas de medio porte</li><li>Melhor custo-benefício para cargas de até 600 kg</li><li>Dimensões máx.: 1,35 m alt. × 1,10 m larg. × 1,85 m comp.</li><li>Peso máx.: 600 kg</li><li>Picapes: Ideal para cargas alongadas (ex.: tubos, barras, perfis metálicos)</li><li> Espera: R$ 0,80/min após 20 min</li>`);
     return;
   }
-
   if (servico === "hr_ducato") {
-    showRules(`
-      <li>Pequeno caminhão / Ideal para cargas volumosas em quantidade intermediária</li>
-      <li>Ideal para mudanças pequenas e cargas maiores</li>
-      <li>Dimensões máx.: 1,90 m alt. × 1,40 m larg. × 2,50 m comp.</li>
-      <li>Peso máx.: 1500 kg</li>
-      <li> Espera: R$ 1,20/min após 30 min</li>
-    `);
+    showRules(`<li>Pequeno caminhão / Ideal para cargas volumosas em quantidade intermediária</li><li>Ideal para mudanças pequenas e cargas maiores</li><li>Dimensões máx.: 1,90 m alt. × 1,40 m larg. × 2,50 m comp.</li><li>Peso máx.: 1500 kg</li><li> Espera: R$ 1,20/min após 30 min</li>`);
     return;
   }
-
   if (servico === "iveco_master") {
-    showRules(`
-      <li>Ideal para operações maiores em centros urbanos com restrição de caminhões</li>
-      <li>Transporte de cargas paletizadas</li>
-      <li>Capacidade volumétrica 10-15 m³</li>
-      <li>Peso max.: 2300 kg</li>
-      <li> Espera: R$ 1,20/min após 30 min</li>
-    `);
+    showRules(`<li>Ideal para operações maiores em centros urbanos com restrição de caminhões</li><li>Transporte de cargas paletizadas</li><li>Capacidade volumétrica 10-15 m³</li><li>Peso max.: 2300 kg</li><li> Espera: R$ 1,20/min após 30 min</li>`);
     return;
   }
-
   hideRules();
 }
 
 // ===================== Botão Whats — helpers =====================
-function getBtnWhats() {
-  return document.getElementById("btnWhats");
-}
-
+function getBtnWhats() { return document.getElementById("btnWhats"); }
 function esconderWhats() {
-  const btnWhats = getBtnWhats();
-  if (!btnWhats) return;
-  btnWhats.classList.add("hide");
-  btnWhats.classList.remove("show", "wpp-attention");
-  btnWhats.setAttribute("aria-disabled", "true");
-  btnWhats.setAttribute("tabindex", "-1");
-  btnWhats.href = "#";
+  const btnWhats = getBtnWhats(); if (!btnWhats) return;
+  btnWhats.classList.add("hide"); btnWhats.classList.remove("show","wpp-attention");
+  btnWhats.setAttribute("aria-disabled","true"); btnWhats.setAttribute("tabindex","-1"); btnWhats.href = "#";
 }
-
 function mostrarWhats() {
-  const btnWhats = getBtnWhats();
-  if (!btnWhats) return;
-  btnWhats.classList.remove("hide");
-  btnWhats.classList.add("show");
-  btnWhats.setAttribute("aria-disabled", "false");
-  btnWhats.removeAttribute("tabindex");
+  const btnWhats = getBtnWhats(); if (!btnWhats) return;
+  btnWhats.classList.remove("hide"); btnWhats.classList.add("show");
+  btnWhats.setAttribute("aria-disabled","false"); btnWhats.removeAttribute("tabindex");
 }
-
 function scrollToWhats() {
-  const btnWhats = getBtnWhats();
-  if (!btnWhats) return;
+  const btnWhats = getBtnWhats(); if (!btnWhats) return;
   const y = btnWhats.getBoundingClientRect().top + window.scrollY - 80;
   window.scrollTo({ top: y, behavior: 'smooth' });
 }
-
-// injeta CSS da animação (caso não exista no seu CSS)
 (function injectWppAttentionCSS(){
   if (document.getElementById('wpp-attention-style')) return;
   const css = `
@@ -848,45 +803,53 @@ function scrollToWhats() {
     90% { transform: translateX(-2px) rotate(-1deg); }
     100% { transform: translateX(0) rotate(0deg); }
   }
-  .wpp-attention {
-    animation: wpp-wobble 0.9s ease both;
-  }`;
-  const style = document.createElement('style');
-  style.id = 'wpp-attention-style';
-  style.textContent = css;
+  .wpp-attention { animation: wpp-wobble 0.9s ease both; }`;
+  const style = document.createElement('style'); style.id = 'wpp-attention-style'; style.textContent = css;
   document.head.appendChild(style);
 })();
-
 function pulseWhats() {
-  const btnWhats = getBtnWhats();
-  if (!btnWhats) return;
-  btnWhats.classList.remove('wpp-attention');
-  void btnWhats.offsetWidth; // reflow
+  const btnWhats = getBtnWhats(); if (!btnWhats) return;
+  btnWhats.classList.remove('wpp-attention'); void btnWhats.offsetWidth;
   btnWhats.classList.add('wpp-attention');
-  try { if (navigator.vibrate) navigator.vibrate([80, 60, 80, 60, 120, 60, 80]); } catch {}
+  try { if (navigator.vibrate) navigator.vibrate([80,60,80,60,120,60,80]); } catch {}
 }
-
-// vibra também se o usuário tocar no botão
 document.addEventListener('pointerdown', (ev) => {
-  const btn = ev.target?.closest?.('#btnWhats');
-  if (!btn) return;
-  try { if (navigator.vibrate) navigator.vibrate([40, 40, 80]); } catch {}
+  const btn = ev.target?.closest?.('#btnWhats'); if (!btn) return;
+  try { if (navigator.vibrate) navigator.vibrate([40,40,80]); } catch {}
 }, { passive: true });
 
-// ===================== Limpa só os endereços (para troca Baú/Food pós-orçamento) =====================
+// ===== scroll para resultados (KM/Valor) =====
+function scrollToMetrics(){
+  const target = document.getElementById('mValor') || document.getElementById('mDist') || document.getElementById('resumo');
+  if (!target) return;
+  const y = target.getBoundingClientRect().top + window.scrollY - 100;
+  window.scrollTo({ top: y, behavior:'smooth' });
+}
+
+// ===================== Limpa (inclui UI/renderer da otimização) =====================
+function clearOptimizationUI() {
+  const el = document.getElementById("otimizacaoResumo");
+  if (el) { el.innerHTML = ""; el.style.display = "none"; }
+  try { if (directionsRenderer) directionsRenderer.setDirections({ routes: [] }); } catch {}
+  const mapsLink = document.getElementById("resumoLinkMaps");
+  if (mapsLink) { mapsLink.style.display = "none"; mapsLink.href = "#"; }
+}
 function limparEnderecosInputs() {
   const origemInput  = document.getElementById("origem");
   const destinoInput = document.getElementById("destino");
   if (origemInput) origemInput.value = "";
   if (destinoInput) destinoInput.value = "";
 
-  origemPlace = null;
-  destinoPlace = null;
+  const origemInfo = document.getElementById("origemInfo");
+  const destinoInfo = document.getElementById("destinoInfo");
+  if (origemInfo) origemInfo.value = "";
+  if (destinoInfo) destinoInfo.value = "";
+
+  origemPlace = null; destinoPlace = null;
 
   const contParadas = document.getElementById("paradas");
   if (contParadas) contParadas.innerHTML = "";
-  paradasPlaces = [];
-  contadorParadas = 0;
+  paradasPlaces = []; contadorParadas = 0;
 
   const mDistEl  = document.getElementById("mDist");
   const mValorEl = document.getElementById("mValor");
@@ -899,11 +862,44 @@ function limparEnderecosInputs() {
   clearInvalid(document.getElementById('destino'));
   document.querySelectorAll('[id^="parada-"]').forEach(clearInvalid);
   document.querySelectorAll(".add-num-pill-js").forEach(el => el.remove());
+
+  clearOptimizationUI();
+}
+
+// ===================== Helpers de rota/links =====================
+function placeToLatLngStr(place) {
+  const loc = place?.geometry?.location;
+  if (!loc) return null;
+  const lat = typeof loc.lat === "function" ? loc.lat() : loc.lat;
+  const lng = typeof loc.lng === "function" ? loc.lng() : loc.lng;
+  return `${lat},${lng}`;
+}
+function placeToQuery(place) {
+  if (!place) return "";
+  if (place.formatted_address) return encodeURIComponent(place.formatted_address);
+  const latlng = placeToLatLngStr(place);
+  return latlng ? encodeURIComponent(latlng) : "";
+}
+function buildGmapsDirLink(originPlace, orderedStops) {
+  const origin = placeToQuery(originPlace);
+  const destinoPlaceTmp = orderedStops[orderedStops.length - 1] || originPlace;
+  const destination = placeToQuery(destinoPlaceTmp);
+  const mids = orderedStops.slice(0, -1).map(placeToQuery).filter(Boolean).join("%7C");
+  let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
+  if (mids) url += `&waypoints=${mids}`;
+  return url;
+}
+function showResumoMapsLink(origin, orderedStops) {
+  const linkEl = document.getElementById("resumoLinkMaps");
+  if (!linkEl) return;
+  const url = buildGmapsDirLink(origin, orderedStops);
+  linkEl.href = url; linkEl.style.display = "inline-block";
 }
 
 // ===================== Cálculo e UI =====================
 function configurarEventos() {
-  ensureMotoTipoControl(); // injeta o seletor de tipo de moto
+  ensureMotoTipoControl();
+  ensureOptimizeUI();
 
   const btnCalcular = document.getElementById("btnCalcular");
   const btnWhats    = document.getElementById("btnWhats");
@@ -912,10 +908,10 @@ function configurarEventos() {
   const mValorEl    = document.getElementById("mValor");
   const servicoSel  = document.getElementById("servico");
   const motoTipoSel = document.getElementById("motoTipo");
+  const btnOtimizar = document.getElementById("btnOtimizar");
 
   esconderWhats();
 
-  // atualizar regras ao trocar serviço/tipo
   if (servicoSel) servicoSel.addEventListener("change", () => {
     updateRules();
     if (servicoSel.value !== "moto") clearInvalid(document.getElementById("motoTipo"));
@@ -924,24 +920,19 @@ function configurarEventos() {
   if (motoTipoSel) {
     motoTipoSel.addEventListener("change", () => {
       updateRules();
-
       const novoTipo = motoTipoSel.value || "";
-      if (
-        lastQuote.hasQuote &&
-        lastQuote.servico === "moto" &&
-        lastQuote.motoTipo &&
-        novoTipo &&
-        novoTipo !== lastQuote.motoTipo
-      ) {
+      if (lastQuote.hasQuote && lastQuote.servico === "moto" && lastQuote.motoTipo && novoTipo && novoTipo !== lastQuote.motoTipo) {
         limparEnderecosInputs();
         lastQuote = { hasQuote: false, servico: null, motoTipo: null };
       }
     });
   }
 
-  btnWhats?.addEventListener("click", (e)=>{
-    if (btnWhats.getAttribute("aria-disabled") === "true") e.preventDefault();
+  btnOtimizar?.addEventListener("click", async () => {
+    try { await otimizarRotaComGoogle(); } catch(e) { console.error(e); }
   });
+
+  btnWhats?.addEventListener("click", (e)=>{ if (btnWhats.getAttribute("aria-disabled") === "true") e.preventDefault(); });
 
   btnLimpar?.addEventListener("click", () => {
     const origemInput  = document.getElementById("origem");
@@ -951,13 +942,16 @@ function configurarEventos() {
     if (destinoInput) destinoInput.value = "";
     if (motoTipoSel) motoTipoSel.selectedIndex = 0;
 
-    origemPlace = null;
-    destinoPlace = null;
+    const origemInfo = document.getElementById("origemInfo");
+    const destinoInfo = document.getElementById("destinoInfo");
+    if (origemInfo) origemInfo.value = "";
+    if (destinoInfo) destinoInfo.value = "";
+
+    origemPlace = null; destinoPlace = null;
 
     const contParadas = document.getElementById("paradas");
     if (contParadas) contParadas.innerHTML = "";
-    paradasPlaces = [];
-    contadorParadas = 0;
+    paradasPlaces = []; contadorParadas = 0;
 
     if (mDistEl)  mDistEl.textContent  = "—";
     if (mValorEl) mValorEl.textContent = "—";
@@ -966,204 +960,176 @@ function configurarEventos() {
 
     esconderWhats();
     origemInput?.focus();
-
     updateRules();
     lastQuote = { hasQuote: false, servico: null, motoTipo: null };
+
+    clearOptimizationUI();
   });
 
-  btnCalcular?.addEventListener("click", async (e) => {
-    e.preventDefault();
+  btnCalcular?.addEventListener("click", calcularNormal);
 
-    // ====== Validação coletiva ======
-    let anyError = false;
+  updateRules();
+}
 
-    // 1) Validar tipo de moto quando serviço = moto
-    const servico = servicoSel?.value || "";
-    const tipoMoto = document.getElementById("motoTipo")?.value || "";
-    if (servico === "moto" && !tipoMoto) {
-      markInvalid(document.getElementById("motoTipo"), "Selecione Baú ou FOOD.");
-      anyError = true;
-    } else {
-      clearInvalid(document.getElementById("motoTipo"));
+// ---- cálculo padrão (botão CALCULAR já existente)
+async function calcularNormal(e){
+  if (e) e.preventDefault();
+
+  const mDistEl   = document.getElementById("mDist");
+  const mValorEl  = document.getElementById("mValor");
+  const servicoSel  = document.getElementById("servico");
+  const servico = servicoSel?.value || "";
+  const tipoMoto = document.getElementById("motoTipo")?.value || "";
+
+  // tipo obrigatório quando motoboy
+  if (servico === "moto" && !tipoMoto) {
+    markInvalid(document.getElementById("motoTipo"), "Selecione Baú ou FOOD.");
+    mDistEl && (mDistEl.textContent  = "—");
+    mValorEl && (mValorEl.textContent = "—");
+    esconderWhats();
+    document.getElementById("motoTipo")?.focus();
+    return;
+  } else {
+    clearInvalid(document.getElementById("motoTipo"));
+  }
+
+  let anyError = false;
+
+  const origemInput  = document.getElementById("origem");
+  const destinoInput = document.getElementById("destino");
+
+  if (!origemPlace?.geometry?.location) {
+    const t = origemInput?.value.trim() || "";
+    if (!t) { markInvalid(origemInput, "Informe o endereço de Retirada."); anyError = true; }
+    else {
+      const p = await geocodeByText(t);
+      if (p?.geometry?.location) { origemPlace = p; clearInvalid(origemInput); }
+      else { markInvalid(origemInput, "Selecione uma das opções da lista para Retirada."); anyError = true; }
     }
+  } else { clearInvalid(origemInput); }
 
-    // 2) Validar Retirada / Entrega (tenta geocodificar se tiver texto)
-    const origemInput  = document.getElementById("origem");
-    const destinoInput = document.getElementById("destino");
+  const inputsParadas = Array.from(document.querySelectorAll('[id^="parada-"]'));
+  const paradasValidas = [];
+  for (let i = 0; i < inputsParadas.length; i++) {
+    const inp = inputsParadas[i];
+    const txt = inp.value?.trim() || "";
+    if (!txt) { clearInvalid(inp); continue; }
+    let place = paradasPlaces[i];
+    if (!place?.geometry?.location) { place = await geocodeByText(txt); paradasPlaces[i] = place; }
+    if (place?.geometry?.location) { paradasValidas.push(place); clearInvalid(inp); }
+    else { markInvalid(inp, "Selecione uma das opções da lista."); anyError = true; }
+  }
 
-    if (!origemPlace?.geometry?.location) {
-      const t = origemInput?.value.trim() || "";
-      if (!t) {
-        markInvalid(origemInput, "Informe o endereço de Retirada.");
-        anyError = true;
-      } else {
-        const p = await geocodeByText(t);
-        if (p?.geometry?.location) {
-          origemPlace = p;
-          clearInvalid(origemInput);
-        } else {
-          markInvalid(origemInput, "Selecione uma das opções da lista para Retirada.");
-          anyError = true;
-        }
-      }
-    } else {
-      clearInvalid(origemInput);
-    }
-
+  const destinoObrigatorio = paradasValidas.length === 0;
+  if (destinoObrigatorio) {
     if (!destinoPlace?.geometry?.location) {
       const t = destinoInput?.value.trim() || "";
-      if (!t) {
-        markInvalid(destinoInput, "Informe o endereço de Entrega.");
-        anyError = true;
-      } else {
+      if (!t) { markInvalid(destinoInput, "Informe o endereço de Entrega ou adicione paradas."); anyError = true; }
+      else {
         const p = await geocodeByText(t);
-        if (p?.geometry?.location) {
-          destinoPlace = p;
-          clearInvalid(destinoInput);
-        } else {
-          markInvalid(destinoInput, "Selecione uma das opções da lista para Entrega.");
-          anyError = true;
-        }
+        if (p?.geometry?.location) { destinoPlace = p; clearInvalid(destinoInput); }
+        else { markInvalid(destinoInput, "Selecione uma das opções da lista para Entrega ou adicione paradas."); anyError = true; }
       }
-    } else {
-      clearInvalid(destinoInput);
-    }
+    } else { clearInvalid(destinoInput); }
+  } else {
+    const t = destinoInput?.value.trim() || "";
+    if (t && !destinoPlace?.geometry?.location) {
+      const p = await geocodeByText(t);
+      if (p?.geometry?.location) { destinoPlace = p; clearInvalid(destinoInput); }
+      else { markInvalid(destinoInput, "Opcional — se preencher, selecione uma opção da lista."); }
+    } else { clearInvalid(destinoInput); }
+  }
 
-    // 3) Validar paradas (se tiver texto, precisa ser place válido)
-    const inputsParadas = Array.from(document.querySelectorAll('[id^="parada-"]'));
-    const paradasValidas = [];
-    for (let i = 0; i < inputsParadas.length; i++) {
-      const inp = inputsParadas[i];
-      const txt = inp.value?.trim() || "";
-      if (!txt) { clearInvalid(inp); continue; }
+  if (anyError) {
+    mDistEl && (mDistEl.textContent  = "—");
+    mValorEl && (mValorEl.textContent = "—");
+    esconderWhats();
+    return;
+  }
 
-      let place = paradasPlaces[i];
-      if (!place?.geometry?.location) {
-        place = await geocodeByText(txt);
-        paradasPlaces[i] = place;
-      }
-      if (place?.geometry?.location) {
-        paradasValidas.push(place);
-        clearInvalid(inp);
-      } else {
-        markInvalid(inp, "Selecione uma das opções da lista.");
-        anyError = true;
-      }
-    }
+  const points = [origemPlace, ...paradasValidas];
+  if (destinoPlace?.geometry?.location) points.push(destinoPlace);
 
-    if (anyError) {
-      if (mDistEl)  mDistEl.textContent  = "—";
-      if (mValorEl) mValorEl.textContent = "—";
-      esconderWhats();
-      return;
-    }
+  if (points.length < 2) {
+    markInvalid(destinoInput, "Informe Entrega ou adicione pelo menos uma Parada.");
+    mDistEl && (mDistEl.textContent  = "—");
+    mValorEl && (mValorEl.textContent = "—");
+    esconderWhats();
+    return;
+  }
 
-    // ====== Tudo ok: calcular ======
-    const waypoints = paradasValidas.map(p => ({ location: p.geometry.location, stopover: true }));
+  const waypoints = points.slice(1, -1).map(p => ({ location: p.geometry.location, stopover: true }));
+  const origemLoc = points[0].geometry.location;
+  const destinoLoc = points[points.length - 1].geometry.location;
 
-    const finalizarComKm = (kmInt) => {
-      const tipo    = document.getElementById("motoTipo")?.value || "";
-      const pedagioInput = document.getElementById("pedagio");
-      const pedagioVal = pedagioInput ? Number(pedagioInput.value || 0) : 0;
+  const finalizarComKm = (kmInt) => finalizarOrcamentoComKm(kmInt, paradasValidas, servico);
 
-      let valor = 0;
-      let servicoTxt = "";
-      let extraObs = "";
+  if (google.maps?.DirectionsService) {
+    const dirSvc = new google.maps.DirectionsService();
+    dirSvc.route({
+      origin:      origemLoc,
+      destination: destinoLoc,
+      waypoints,
+      optimizeWaypoints: false,
+      travelMode: google.maps.TravelMode.DRIVING
+    }, (res, status) => {
+      if (status !== "OK" || !res?.routes?.[0]?.legs?.length) { esconderWhats(); return; }
+      const totalMeters = res.routes[0].legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
+      const kmInt = Math.round(totalMeters / 1000);
+      finalizarComKm(kmInt);
+    });
+  } else {
+    esconderWhats();
+  }
+}
 
-      if (servico === "carro") {
-        valor = calcularPrecoCarro(kmInt, paradasValidas.length, pedagioVal);
-        servicoTxt = "*_Carro_*";
-        setFoodInfo(false);
-      } else if (servico === "moto") {
-        if (tipo === "food") {
-          valor = calcularPrecoMotoFood(kmInt, paradasValidas.length, pedagioVal);
-          servicoTxt = "*_Moto — (Somente mochila termica)_*";
-          setFoodInfo(true);
-        } else {
-          valor = calcularPrecoMotoBau(kmInt, paradasValidas.length, pedagioVal);
-          servicoTxt = "*_Moto — Baú_*";
-          setFoodInfo(false);
-        }
-      } else if (servico === "fiorino") {
-        valor = calcularPrecoFiorino(kmInt, paradasValidas.length, pedagioVal);
-        servicoTxt = "*_Fiorino_*";
-        setFoodInfo(false);
-      } else if (servico === "hr_ducato") {
-        valor = calcularPrecoHRDucato(kmInt, paradasValidas.length, pedagioVal);
-        servicoTxt = "*_HR / Ducato_*";
-        setFoodInfo(false);
-      } else if (servico === "iveco_master") {
-        valor = calcularPrecoIvecoMaster(kmInt, paradasValidas.length, pedagioVal);
-        servicoTxt = "*_Iveco / Master_*";
-        setFoodInfo(false);
-      }
+function finalizarOrcamentoComKm(kmInt, paradasValidas, servico){
+  const tipo    = document.getElementById("motoTipo")?.value || "";
+  const pedagioInput = document.getElementById("pedagio");
+  const pedagioVal = pedagioInput ? Number(pedagioInput.value || 0) : 0;
 
-      if (mDistEl)  mDistEl.textContent  = `${kmInt} km`;
-      if (mValorEl) mValorEl.textContent = fmtBRL(valor);
+  const mDistEl  = document.getElementById("mDist");
+  const mValorEl = document.getElementById("mValor");
 
-      clearInvalid(document.getElementById('origem'));
-      clearInvalid(document.getElementById('destino'));
-      document.querySelectorAll('[id^="parada-"]').forEach(clearInvalid);
+  let valor = 0, servicoTxt = "", extraObs = "";
 
-      const textoURL = montarMensagem(
-        origemPlace.formatted_address,
-        destinoPlace.formatted_address,
-        kmInt,
-        valor,
-        servicoTxt,
-        paradasValidas,
-        extraObs
-      );
+  if (servico === "carro") { valor = calcularPrecoCarro(kmInt, paradasValidas.length, pedagioVal); servicoTxt = "*_Carro_*"; setFoodInfo(false); }
+  else if (servico === "moto") {
+    if (tipo === "food") { valor = calcularPrecoMotoFood(kmInt, paradasValidas.length, pedagioVal); servicoTxt = "*_Moto — (Somente mochila térmica)_*"; setFoodInfo(true); }
+    else { valor = calcularPrecoMotoBau(kmInt, paradasValidas.length, pedagioVal); servicoTxt = "*_Moto — Baú_*"; setFoodInfo(false); }
+  } else if (servico === "fiorino") { valor = calcularPrecoFiorino(kmInt, paradasValidas.length, pedagioVal); servicoTxt = "*_Fiorino_*"; }
+  else if (servico === "hr_ducato") { valor = calcularPrecoHRDucato(kmInt, paradasValidas.length, pedagioVal); servicoTxt = "*_HR / Ducato_*"; }
+  else if (servico === "iveco_master") { valor = calcularPrecoIvecoMaster(kmInt, paradasValidas.length, pedagioVal); servicoTxt = "*_Iveco / Master_*"; }
 
-      const btnWhats = getBtnWhats();
-      if (btnWhats) {
-        btnWhats.href = `https://api.whatsapp.com/send?phone=${WHATS_NUM}&text=${textoURL}`;
-      }
-      mostrarWhats();
-      pulseWhats();
-      scrollToWhats();
+  if (mDistEl)  mDistEl.textContent  = `${kmInt} km`;
+  if (mValorEl) mValorEl.textContent = fmtBRL(valor);
 
-      lastQuote = {
-        hasQuote: true,
-        servico,
-        motoTipo: servico === "moto" ? tipo : null
-      };
-    };
+  clearInvalid(document.getElementById('origem'));
+  clearInvalid(document.getElementById('destino'));
+  document.querySelectorAll('[id^="parada-"]').forEach(clearInvalid);
 
-    if (waypoints.length > 0 && google.maps?.DirectionsService) {
-      const dirSvc = new google.maps.DirectionsService();
-      dirSvc.route({
-        origin:      origemPlace.geometry.location,
-        destination: destinoPlace.geometry.location,
-        waypoints,
-        optimizeWaypoints: false,
-        travelMode: google.maps.TravelMode.DRIVING
-      }, (res, status) => {
-        if (status !== "OK" || !res?.routes?.[0]?.legs?.length) { esconderWhats(); return; }
-        const totalMeters = res.routes[0].legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
-        const kmInt = Math.round(totalMeters / 1000);
-        finalizarComKm(kmInt);
-      });
-    } else if (google.maps?.DistanceMatrixService) {
-      const svc = new google.maps.DistanceMatrixService();
-      svc.getDistanceMatrix({
-        origins:      [origemPlace.geometry.location],
-        destinations: [destinoPlace.geometry.location],
-        travelMode:   google.maps.TravelMode.DRIVING
-      }, (res, status) => {
-        if (status !== "OK") { esconderWhats(); return; }
-        const el = res?.rows?.[0]?.elements?.[0];
-        if (!el || el.status !== "OK") { esconderWhats(); return; }
-        const kmInt = Math.round(el.distance.value / 1000);
-        finalizarComKm(kmInt);
-      });
-    } else {
-      esconderWhats();
-    }
-  });
+  // link maps no resumo (sempre) — inclui ENTREGA
+  const pointsForLink = [origemPlace, ...paradasValidas];
+  if (destinoPlace?.formatted_address || destinoPlace?.geometry?.location) pointsForLink.push(destinoPlace);
+  showResumoMapsLink(pointsForLink[0], pointsForLink.slice(1));
 
-  // força estado inicial correto logo na montagem
-  updateRules();
+  const destinoTexto = destinoPlace?.formatted_address || (paradasValidas.length ? paradasValidas[paradasValidas.length - 1]?.formatted_address : "");
+  const textoURL = montarMensagem(
+    origemPlace.formatted_address,
+    destinoTexto,
+    kmInt,
+    valor,
+    servicoTxt,
+    paradasValidas,
+    extraObs
+  );
+
+  const btnWhats = getBtnWhats();
+  if (btnWhats) btnWhats.href = `https://api.whatsapp.com/send?phone=${WHATS_NUM}&text=${textoURL}`;
+
+  mostrarWhats(); pulseWhats(); // sem scroll para o botão
+  scrollToMetrics();            // rola para KM/Valor
+  lastQuote = { hasQuote: true, servico, motoTipo: servico === "moto" ? (document.getElementById("motoTipo")?.value || "") : null };
 }
 
 // ===================== Validação (utilitários) =====================
@@ -1188,15 +1154,236 @@ function clearInvalid(input){
   input.classList.remove('is-invalid');
   input.removeAttribute('aria-invalid');
   const hint = input.nextElementSibling;
-  if(hint && hint.classList?.contains('err-hint')) hint.remove();
+  if (hint && hint.classList?.contains('err-hint')) hint.remove();
+}
+
+// ===================== === ROTEIRO OTIMIZAÇÃO (RETIRADA FIXA) =====================
+let directionsService = null;
+let directionsRenderer = null;
+
+function initDirectionsOnce() {
+  if (!directionsService) directionsService = new google.maps.DirectionsService();
+  if (!directionsRenderer) {
+    directionsRenderer = new google.maps.DirectionsRenderer({ suppressMarkers: true });
+    // Se tiver um mapa, conecte aqui: directionsRenderer.setMap(seuMapa);
+  }
+}
+
+function renderResumoOtimizacao(result) {
+  const el = document.getElementById("otimizacaoResumo");
+  if (!el) return;
+  const legs = result?.routes?.[0]?.legs || [];
+  const totalKm = legs.reduce((acc, l) => acc + (l.distance?.value || 0), 0) / 1000;
+  const totalMin = Math.round(legs.reduce((acc, l) => acc + (l.duration?.value || 0), 0) / 60);
+
+  const itens = [];
+  itens.push(`<li><b>Retirada</b>: ${origemPlace?.formatted_address || placeToLatLngStr(origemPlace) || "(sem endereço)"}</li>`);
+  paradasPlaces.forEach((p, i) => {
+    const texto = p?.formatted_address || placeToLatLngStr(p) || "(sem endereço)";
+    itens.push(`<li><b>Parada ${i+1}</b>: ${texto}</li>`);
+  });
+  if (destinoPlace) {
+    const texto = destinoPlace.formatted_address || placeToLatLngStr(destinoPlace) || "(sem endereço)";
+    itens.push(`<li><b>Entrega</b>: ${texto}</li>`);
+  }
+
+  // Link e preview devem incluir ENTREGA no final
+  const orderedForLink = [...paradasPlaces];
+  if (destinoPlace) orderedForLink.push(destinoPlace);
+
+  const link = buildGmapsDirLink(origemPlace, orderedForLink);
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-title">Rota otimizada</div>
+      <ul>${itens.join("")}</ul>
+      <p><b>Total estimado:</b> ~${isFinite(totalKm) ? totalKm.toFixed(1) : "—"} km • ~${isFinite(totalMin) ? totalMin : "—"} min</p>
+      <p><a href="${link}" target="_blank" rel="noopener">Abrir no Google Maps</a></p>
+      <div style="margin-top:10px">
+        <button id="btnCalcularOt" type="button" class="primary">Calcular rota otimizada</button>
+      </div>
+      <small>Obs.: a navegação considera trânsito em tempo real no app do Maps.</small>
+    </div>`;
+  el.style.display = "block";
+
+  showResumoMapsLink(origemPlace, orderedForLink);
+
+  // ligar botão
+  document.getElementById("btnCalcularOt")?.addEventListener("click", calcularRotaOtimizada);
+}
+
+// === reorganiza inputs conforme ordem otimizada (Retirada fixa)
+function aplicarOrdemOtimizadaNosInputs(ordered) {
+  if (!Array.isArray(ordered) || ordered.length === 0) return;
+
+  // último vira ENTREGA
+  const last = ordered[ordered.length - 1];
+  const destinoInput = document.getElementById("destino");
+  if (destinoInput) destinoInput.value = last?.formatted_address || "";
+  destinoPlace = last;
+
+  // demais viram PARADAS
+  const novosStops = ordered.slice(0, -1);
+
+  const container = document.getElementById("paradas");
+  if (!container) return;
+  container.innerHTML = "";
+  paradasPlaces = [];
+  contadorParadas = 0;
+
+  novosStops.forEach((p, i) => {
+    adicionarParadaInput();
+    const inp = document.getElementById(`parada-${i}`);
+    if (inp) inp.value = p?.formatted_address || "";
+    paradasPlaces[i] = p;
+  });
+
+  clearInvalid(destinoInput);
+  document.querySelectorAll('[id^="parada-"]').forEach(clearInvalid);
+}
+
+// === cálculo pela ordem otimizada (força Bau/Food quando Moto)
+async function calcularRotaOtimizada() {
+  const servicoSel  = document.getElementById("servico");
+  const servico = servicoSel?.value || "";
+  const tipoMoto = document.getElementById("motoTipo")?.value || "";
+
+  if (servico === "moto" && !tipoMoto) {
+    markInvalid(document.getElementById("motoTipo"), "Selecione Baú ou FOOD.");
+    document.getElementById("motoTipo")?.focus();
+    return;
+  } else {
+    clearInvalid(document.getElementById("motoTipo"));
+  }
+
+  if (!origemPlace?.geometry?.location) {
+    alert("Defina a RETIRADA antes de calcular.");
+    return;
+  }
+  if (!paradasPlaces.length && !destinoPlace?.geometry?.location) {
+    alert("Adicione paradas ou uma entrega.");
+    return;
+  }
+
+  // rota na ordem otimizada: origem -> paradas (mids) -> destino (último)
+  const ordered = [...paradasPlaces];
+  const destino = destinoPlace || ordered[ordered.length - 1];
+  const mids = ordered; // todos os paradasPlaces são intermediários; entrega já está em destinoPlace
+  if (!destino?.geometry?.location) {
+    alert("Não foi possível identificar o destino da rota otimizada.");
+    return;
+  }
+
+  const origemLoc = origemPlace.geometry.location;
+  const destinoLoc = destino.geometry.location;
+  const waypoints = mids.map(p => ({ location: p.geometry.location, stopover: true }));
+
+  const dirSvc = new google.maps.DirectionsService();
+  dirSvc.route({
+    origin: origemLoc,
+    destination: destinoLoc,
+    waypoints,
+    optimizeWaypoints: false, // já está na ordem ótima
+    travelMode: google.maps.TravelMode.DRIVING
+  }, (res, status) => {
+    if (status !== "OK" || !res?.routes?.[0]?.legs?.length) { esconderWhats(); return; }
+    const totalMeters = res.routes[0].legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
+    const kmInt = Math.round(totalMeters / 1000);
+    finalizarOrcamentoComKm(kmInt, mids, servico); // mids = paradas; ENTREGA = destinoPlace
+  });
+}
+
+/**
+ * Otimiza com RETIRADA fixa. ENTREGA (se houver) vira candidata junto das PARADAS.
+ * O algoritmo testa cada candidato como destino final e otimiza o restante como intermediárias.
+ */
+function otimizarRotaComGoogle() {
+  if (!window.google || !google.maps?.DirectionsService) {
+    alert("Google Maps não carregou ainda. Tente novamente em alguns segundos.");
+    return;
+  }
+  if (!origemPlace?.geometry?.location) {
+    alert("Defina a RETIRADA antes de otimizar.");
+    return;
+  }
+
+  // Reconciliar paradas digitadas
+  const inputsParadas = Array.from(document.querySelectorAll('[id^="parada-"]'));
+  const tasks = inputsParadas.map(async (inp, idx) => {
+    const txt = (inp.value || "").trim();
+    if (!txt) return null;
+    let p = paradasPlaces[idx];
+    if (!p?.geometry?.location) {
+      p = await geocodeByText(txt);
+      if (p?.geometry?.location) paradasPlaces[idx] = p;
+    }
+    return (p?.geometry?.location) ? p : null;
+  });
+
+  Promise.all(tasks).then(async (list) => {
+    const paradasValidas = list.filter(Boolean);
+
+    const candidatos = [...paradasValidas];
+    if (destinoPlace?.geometry?.location) candidatos.push(destinoPlace);
+
+    if (!candidatos.length) {
+      alert("Adicione pelo menos uma PARADA ou informe uma ENTREGA para otimizar.");
+      return;
+    }
+
+    initDirectionsOnce();
+
+    function locStr(place){ return place.formatted_address || placeToLatLngStr(place); }
+    function routeWith(origin, destination, waypointsArr) {
+      return new Promise((resolve) => {
+        directionsService.route({
+          origin, destination, waypoints: waypointsArr, optimizeWaypoints: true, travelMode: google.maps.TravelMode.DRIVING
+        }, (result, status) => {
+          if (status !== "OK") return resolve(null);
+          const legs = result?.routes?.[0]?.legs || [];
+          const totalMeters = legs.reduce((a, l) => a + (l.distance?.value || 0), 0);
+          const totalSecs   = legs.reduce((a, l) => a + (l.duration?.value || 0), 0);
+          resolve({ result, totalMeters, totalSecs });
+        });
+      });
+    }
+
+    let best = null;
+
+    const origin = locStr(origemPlace);
+    for (let i = 0; i < candidatos.length; i++) {
+      const dest = locStr(candidatos[i]);
+      const mids = candidatos.filter((_, j) => j !== i).map(p => ({ location: locStr(p), stopover: true }));
+      const trial = await routeWith(origin, dest, mids);
+      if (!trial) continue;
+      if (!best || trial.totalSecs < best.totalSecs) best = { ...trial, destIndex: i };
+    }
+
+    if (!best) { alert("Não consegui otimizar a rota agora. Tente novamente."); return; }
+
+    const midsOrder = best.result.routes[0].waypoint_order || [];
+    const midsList  = candidatos.filter((_, j) => j !== best.destIndex);
+    const orderedMids = midsOrder.map(i => midsList[i]);
+    const lastStop = candidatos[best.destIndex];
+    const ordered = [...orderedMids, lastStop];
+
+    // Atualiza estado e inputs na ordem ótima (último vira ENTREGA)
+    paradasPlaces = [...ordered.slice(0, -1)];
+    destinoPlace  = lastStop;
+    aplicarOrdemOtimizadaNosInputs(ordered);
+
+    try { directionsRenderer.setDirections(best.result); } catch(e) {}
+    renderResumoOtimizacao(best.result);
+  });
 }
 
 // ===================== Init =====================
 function initOrcamento() {
   ensureMotoTipoControl();
   configurarAutocomplete();
+  ensureOptimizeUI();
+  ensureBackToTopUI();
   configurarEventos();
-  // NÃO chamamos hideRules() aqui; updateRules() já cuida do estado inicial
   esconderWhats();
 }
 window.initOrcamento = initOrcamento;
