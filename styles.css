@@ -7,7 +7,7 @@
   --primary:#4ade80;
   --primary-ink:#052e1a;
   --outline:#2a3443;
-  --shadow: 0 10px 30px rgba(0,0,0,.35);
+  --shadow: 0 10px 30px rgb(35, 34, 97);
   --radius: 18px;
   --radius-sm: 12px;
   --speed: .25s;
