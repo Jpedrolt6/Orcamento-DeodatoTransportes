@@ -48,14 +48,14 @@ function makeLinedTextarea(id, placeholder) {
   ta.id = id;
   ta.className = "addr-info";
   ta.rows = 1;
-  ta.placeholder = placeholder || "Adicionar informações";
+  ta.placeholder = placeholder || "Informações..Ex: Nome de quem procurar, Apto, Conjunto. ";
   ta.style.cssText = `
     margin-top:6px;width:100%;resize:none;color:#e9eef7;
     background:
-      linear-gradient(transparent, transparent 20px, rgba(255,255,255,0.10) 20px) repeat-y;
+      linear-gradient(transparent, transparent 10px, rgba(255, 255, 255, 0.06) 20px) repeat-y;
     background-size: 100% 24px;
     background-color: transparent;
-    border: none; border-bottom: 0px dashed #000000ff;
+    border: none; border-bottom: 0px dashed #ffffffff;
     border-radius: 0; padding: 4px 2px 4px 0;
     font-family: inherit; font-size: 13px; line-height: 24px;
     outline: none; box-shadow: none; overflow:hidden;
@@ -303,7 +303,7 @@ function setFoodInfo(show) {
 }
 
 // ---------- Monta mensagem WhatsApp ----------
-function montarMensagem(origem, destino, kmInt, valor, servicoTxt, paradasList = [], extraObs = "") {
+function montarMensagem(origem, destino, kmTexto, valor, servicoTxt, paradasList = [], extraObs = "") {
   const linhas = [];
   const origemInfo = getInfoValue("origemInfo");
   linhas.push("*RETIRADA*","📍 " + origem);
@@ -331,7 +331,7 @@ function montarMensagem(origem, destino, kmInt, valor, servicoTxt, paradasList =
 
   linhas.push(`*Tipo de veículo:* ${servicoTxt}`);
   if (extraObs) linhas.push(extraObs);
-  linhas.push("", "🛣️ Km " + kmInt, "💵 " + fmtBRL(valor));
+  linhas.push("", "🛣️ Km " + kmTexto, "💵 " + fmtBRL(valor));
 
   return encodeURIComponent(linhas.join("\n"));
 }
@@ -384,7 +384,7 @@ function showAddNumeroHint(inputEl) {
     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" style="margin-right:2px">
       <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
     </svg>
-    Adicionar número
+    Adicionar número do local
   `;
 
   pill.addEventListener("click", () => {
@@ -623,7 +623,7 @@ function ensureOptimizeUI() {
     if (!sub) {
       sub = document.createElement("div");
       sub.id = "otSub";
-      sub.textContent = "IDEAL PARA CORRIDAS COM BASTANTES PARADAS.";
+      sub.textContent = "ROTA OTIMIZADA: Ideal para corridas com bastantes paradas.";
       sub.style.cssText = "display:block;margin:4px 0 0 8px;font-size:12px;color:#a9b2c3;font-weight:600;";
       actions.appendChild(sub);
     }
@@ -689,8 +689,8 @@ function configurarAutocomplete() {
   aplicarBloqueioNosCamposBasicos();
 
   // Textareas de info (linhas) com exemplos profissionais
-  ensureInfoField(origemInput, "origemInfo", "Adicionar informações");
-  ensureInfoField(destinoInput, "destinoInfo", "Adicionar informações");
+  ensureInfoField(origemInput, "origemInfo", "Adicionar informações: Nome de quem procurar, Apto, Conjunto e etc...");
+  ensureInfoField(destinoInput, "destinoInfo", "Adicionar informações: ");
 
   setupInputAutocomplete({ inputEl: origemInput,  onPlaceChosen: (place) => { origemPlace = place; } });
   setupInputAutocomplete({ inputEl: destinoInput, onPlaceChosen: (place) => { destinoPlace = place; } });
@@ -896,6 +896,22 @@ function showResumoMapsLink(origin, orderedStops) {
   linkEl.href = url; linkEl.style.display = "inline-block";
 }
 
+// === Distância: "X,Y" (<10 km) e inteiro (>=10 km)
+// - Y = 0..9 (cada passo = 100 m), sempre ARREDONDANDO PRA BAIXO
+// - locale: 'pt' => vírgula  |  'en' => ponto
+function formatKmDisplay(totalMeters, locale = 'pt') {
+  const m = Math.max(0, Math.round(Number(totalMeters) || 0));
+
+  // 10 km ou mais: mostrar só o inteiro (estético)
+  if (m >= 10000) return String(Math.round(m / 1000));
+
+  // 0–9,999 km: "X,Y", com Y em décimos (100 m) e truncado
+  const km = Math.floor(m / 1000);
+  const tenths = Math.floor((m % 1000) / 100); // 0..9
+  const sep = (locale === 'en') ? '.' : ',';
+  return `${km}${sep}${tenths}`;
+}
+
 // ===================== Cálculo e UI =====================
 function configurarEventos() {
   ensureMotoTipoControl();
@@ -1062,7 +1078,7 @@ async function calcularNormal(e){
   const origemLoc = points[0].geometry.location;
   const destinoLoc = points[points.length - 1].geometry.location;
 
-  const finalizarComKm = (kmInt) => finalizarOrcamentoComKm(kmInt, paradasValidas, servico);
+  const finalizarComKm = (kmInt, totalMeters) => finalizarOrcamentoComKm(kmInt, paradasValidas, servico, totalMeters);
 
   if (google.maps?.DirectionsService) {
     const dirSvc = new google.maps.DirectionsService();
@@ -1075,15 +1091,15 @@ async function calcularNormal(e){
     }, (res, status) => {
       if (status !== "OK" || !res?.routes?.[0]?.legs?.length) { esconderWhats(); return; }
       const totalMeters = res.routes[0].legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
-      const kmInt = Math.round(totalMeters / 1000);
-      finalizarComKm(kmInt);
+      const kmInt = Math.floor(totalMeters / 1000); // cobrar só km inteiro pra baixo
+      finalizarComKm(kmInt, totalMeters);
     });
   } else {
     esconderWhats();
   }
 }
 
-function finalizarOrcamentoComKm(kmInt, paradasValidas, servico){
+function finalizarOrcamentoComKm(kmInt, paradasValidas, servico, totalMeters){
   const tipo    = document.getElementById("motoTipo")?.value || "";
   const pedagioInput = document.getElementById("pedagio");
   const pedagioVal = pedagioInput ? Number(pedagioInput.value || 0) : 0;
@@ -1101,7 +1117,9 @@ function finalizarOrcamentoComKm(kmInt, paradasValidas, servico){
   else if (servico === "hr_ducato") { valor = calcularPrecoHRDucato(kmInt, paradasValidas.length, pedagioVal); servicoTxt = "*_HR / Ducato_*"; }
   else if (servico === "iveco_master") { valor = calcularPrecoIvecoMaster(kmInt, paradasValidas.length, pedagioVal); servicoTxt = "*_Iveco / Master_*"; }
 
-  if (mDistEl)  mDistEl.textContent  = `${kmInt} km`;
+  const kmDisplay = formatKmDisplay(totalMeters != null ? totalMeters : (kmInt * 1000));
+
+  if (mDistEl)  mDistEl.textContent  = kmDisplay;
   if (mValorEl) mValorEl.textContent = fmtBRL(valor);
 
   clearInvalid(document.getElementById('origem'));
@@ -1117,7 +1135,7 @@ function finalizarOrcamentoComKm(kmInt, paradasValidas, servico){
   const textoURL = montarMensagem(
     origemPlace.formatted_address,
     destinoTexto,
-    kmInt,
+    kmDisplay, // mostra igual ao resumo
     valor,
     servicoTxt,
     paradasValidas,
@@ -1288,8 +1306,8 @@ async function calcularRotaOtimizada() {
   }, (res, status) => {
     if (status !== "OK" || !res?.routes?.[0]?.legs?.length) { esconderWhats(); return; }
     const totalMeters = res.routes[0].legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
-    const kmInt = Math.round(totalMeters / 1000);
-    finalizarOrcamentoComKm(kmInt, mids, servico); // mids = paradas; ENTREGA = destinoPlace
+    const kmInt = Math.floor(totalMeters / 1000); // cobrar só km inteiro pra baixo
+    finalizarOrcamentoComKm(kmInt, mids, servico, totalMeters); // mids = paradas; ENTREGA = destinoPlace
   });
 }
 
@@ -1376,6 +1394,94 @@ function otimizarRotaComGoogle() {
     renderResumoOtimizacao(best.result);
   });
 }
+
+// === ROTA OTIMIZADA -> rolar até o botão verde "Calcular rota otimizada" ===
+(function setupScrollToOptimizedButton() {
+  const HEADER_OFFSET = 0; // se tiver header fixo cobrindo o topo, coloque por ex.: 96
+  const TEXT_ROTA = /^\s*rota\s+otimizada\s*$/i;
+  const TEXT_CALCULAR = /^\s*calcular\s+rota\s+otimizada\s*$/i;
+
+  function isVisible(el) {
+    if (!el || !el.isConnected) return false;
+    const style = getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+  function findButtonByText(re) {
+    const candidates = document.querySelectorAll('button, a, [role="button"]');
+    for (const el of candidates) {
+      const txt = (el.textContent || el.value || '').trim();
+      if (re.test(txt)) return el;
+    }
+    return null;
+  }
+
+  function scrollToEl(el) {
+    const y = el.getBoundingClientRect().top + window.pageYOffset - HEADER_OFFSET;
+    window.scrollTo({ top: y, behavior: 'smooth' });
+    // micro realce sem CSS extra
+    const old = el.style.boxShadow;
+    el.style.boxShadow = '0 0 0 6px rgba(0,0,0,0.15)';
+    setTimeout(() => { el.style.boxShadow = old; }, 700);
+    try { el.focus({ preventScroll: true }); } catch {}
+  }
+
+  // espera o botão existir/ficar visível (até ~5s)
+  function waitForOptimizedCalculateBtn(onFound) {
+    // 1) tenta agora
+    let target = findButtonByText(TEXT_CALCULAR);
+    if (target && isVisible(target)) { onFound(target); return () => {}; }
+
+    // 2) observa mutações (aparição tardia)
+    const obs = new MutationObserver(() => {
+      target = findButtonByText(TEXT_CALCULAR);
+      if (target && isVisible(target)) {
+        obs.disconnect();
+        clearInterval(poll);
+        clearTimeout(stopAll);
+        onFound(target);
+      }
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+
+    // 3) polling (fallback pra casos em que o botão troca só texto/estilo)
+    const poll = setInterval(() => {
+      target = findButtonByText(TEXT_CALCULAR);
+      if (target && isVisible(target)) {
+        obs.disconnect();
+        clearInterval(poll);
+        clearTimeout(stopAll);
+        onFound(target);
+      }
+    }, 100);
+
+    // 4) limite de segurança (5s)
+    const stopAll = setTimeout(() => {
+      obs.disconnect();
+      clearInterval(poll);
+    }, 5000);
+
+    // retorna função pra cancelar (não precisamos aqui, mas fica limpo)
+    return () => { obs.disconnect(); clearInterval(poll); clearTimeout(stopAll); };
+  }
+
+  // captura clique no botão/label de "ROTA OTIMIZADA" (sem mexer no HTML)
+  document.addEventListener('click', (ev) => {
+    const el = ev.target && ev.target.closest('button, [role="button"], a, label, .btn, .button');
+    if (!el) return;
+    const txt = (el.textContent || el.value || '').trim();
+    if (!TEXT_ROTA.test(txt)) return;
+
+    // deixa o clique fazer o que já faz (abrir o card/sugestão do Google)
+    // e em seguida aguarda o botão verde aparecer para rolar até ele
+    setTimeout(() => {
+      waitForOptimizedCalculateBtn((btn) => scrollToEl(btn));
+    }, 0);
+  }, { passive: true });
+})();
+
 
 // ===================== Init =====================
 function initOrcamento() {
