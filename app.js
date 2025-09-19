@@ -896,20 +896,12 @@ function showResumoMapsLink(origin, orderedStops) {
   linkEl.href = url; linkEl.style.display = "inline-block";
 }
 
-// === Distância: "X,Y" (<10 km) e inteiro (>=10 km)
-// - Y = 0..9 (cada passo = 100 m), sempre ARREDONDANDO PRA BAIXO
-// - locale: 'pt' => vírgula  |  'en' => ponto
+// === Distância com 2 casas decimais, pt/en
 function formatKmDisplay(totalMeters, locale = 'pt') {
-  const m = Math.max(0, Math.round(Number(totalMeters) || 0));
-
-  // 10 km ou mais: mostrar só o inteiro (estético)
-  if (m >= 10000) return String(Math.round(m / 1000));
-
-  // 0–9,999 km: "X,Y", com Y em décimos (100 m) e truncado
-  const km = Math.floor(m / 1000);
-  const tenths = Math.floor((m % 1000) / 100); // 0..9
-  const sep = (locale === 'en') ? '.' : ',';
-  return `${km}${sep}${tenths}`;
+  const m = Math.max(0, Number(totalMeters) || 0);
+  const km = Math.round((m / 1000) * 100) / 100; // arredonda para 2 casas
+  const fixed = km.toFixed(2); // sempre 2 casas
+  return (locale === 'en') ? fixed : fixed.replace('.', ',');
 }
 
 // ===================== Cálculo e UI =====================
@@ -1087,12 +1079,22 @@ async function calcularNormal(e){
       destination: destinoLoc,
       waypoints,
       optimizeWaypoints: false,
+      provideRouteAlternatives: true,            // << pegar alternativas
       travelMode: google.maps.TravelMode.DRIVING
     }, (res, status) => {
-      if (status !== "OK" || !res?.routes?.[0]?.legs?.length) { esconderWhats(); return; }
-      const totalMeters = res.routes[0].legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
-      const kmInt = Math.floor(totalMeters / 1000); // cobrar só km inteiro pra baixo
-      finalizarComKm(kmInt, totalMeters);
+      if (status !== "OK" || !res?.routes?.length) { esconderWhats(); return; }
+
+      // Escolhe a rota mais rápida (menor duração total)
+      let bestMeters = 0, bestSecs = Infinity;
+      for (const r of res.routes) {
+        const legs = r.legs || [];
+        const meters = legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
+        const secs   = legs.reduce((sum, leg) => sum + (leg.duration?.value || 0), 0);
+        if (secs < bestSecs) { bestSecs = secs; bestMeters = meters; }
+      }
+
+      const kmInt = Math.round(bestMeters / 1000); // cobrar pelo MESMO critério do RESUMO
+      finalizarComKm(kmInt, bestMeters);
     });
   } else {
     esconderWhats();
@@ -1302,12 +1304,22 @@ async function calcularRotaOtimizada() {
     destination: destinoLoc,
     waypoints,
     optimizeWaypoints: false, // já está na ordem ótima
+    provideRouteAlternatives: true,
     travelMode: google.maps.TravelMode.DRIVING
   }, (res, status) => {
-    if (status !== "OK" || !res?.routes?.[0]?.legs?.length) { esconderWhats(); return; }
-    const totalMeters = res.routes[0].legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
-    const kmInt = Math.floor(totalMeters / 1000); // cobrar só km inteiro pra baixo
-    finalizarOrcamentoComKm(kmInt, mids, servico, totalMeters); // mids = paradas; ENTREGA = destinoPlace
+    if (status !== "OK" || !res?.routes?.length) { esconderWhats(); return; }
+
+    // escolhe a rota mais rápida
+    let bestMeters = 0, bestSecs = Infinity;
+    for (const r of res.routes) {
+      const legs = r.legs || [];
+      const meters = legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
+      const secs   = legs.reduce((sum, leg) => sum + (leg.duration?.value || 0), 0);
+      if (secs < bestSecs) { bestSecs = secs; bestMeters = meters; }
+    }
+
+    const kmInt = Math.round(bestMeters / 1000);
+    finalizarOrcamentoComKm(kmInt, mids, servico, bestMeters); // mids = paradas; ENTREGA = destinoPlace
   });
 }
 
@@ -1355,13 +1367,20 @@ function otimizarRotaComGoogle() {
     function routeWith(origin, destination, waypointsArr) {
       return new Promise((resolve) => {
         directionsService.route({
-          origin, destination, waypoints: waypointsArr, optimizeWaypoints: true, travelMode: google.maps.TravelMode.DRIVING
+          origin, destination, waypoints: waypointsArr, optimizeWaypoints: true,
+          provideRouteAlternatives: true,
+          travelMode: google.maps.TravelMode.DRIVING
         }, (result, status) => {
           if (status !== "OK") return resolve(null);
-          const legs = result?.routes?.[0]?.legs || [];
-          const totalMeters = legs.reduce((a, l) => a + (l.distance?.value || 0), 0);
-          const totalSecs   = legs.reduce((a, l) => a + (l.duration?.value || 0), 0);
-          resolve({ result, totalMeters, totalSecs });
+          const routes = result?.routes || [];
+          let bestSecs = Infinity, bestMeters = 0, bestIdx = 0;
+          routes.forEach((r, idx) => {
+            const legs = r.legs || [];
+            const meters = legs.reduce((a, l) => a + (l.distance?.value || 0), 0);
+            const secs   = legs.reduce((a, l) => a + (l.duration?.value || 0), 0);
+            if (secs < bestSecs) { bestSecs = secs; bestMeters = meters; bestIdx = idx; }
+          });
+          resolve({ result, totalMeters: bestMeters, totalSecs: bestSecs, bestRouteIndex: bestIdx });
         });
       });
     }
@@ -1379,7 +1398,7 @@ function otimizarRotaComGoogle() {
 
     if (!best) { alert("Não consegui otimizar a rota agora. Tente novamente."); return; }
 
-    const midsOrder = best.result.routes[0].waypoint_order || [];
+    const midsOrder = best.result.routes[best.bestRouteIndex]?.waypoint_order || best.result.routes[0]?.waypoint_order || [];
     const midsList  = candidatos.filter((_, j) => j !== best.destIndex);
     const orderedMids = midsOrder.map(i => midsList[i]);
     const lastStop = candidatos[best.destIndex];
@@ -1390,7 +1409,12 @@ function otimizarRotaComGoogle() {
     destinoPlace  = lastStop;
     aplicarOrdemOtimizadaNosInputs(ordered);
 
-    try { directionsRenderer.setDirections(best.result); } catch(e) {}
+    try {
+      directionsRenderer.setDirections(best.result);
+      if (typeof directionsRenderer.setRouteIndex === "function") {
+        directionsRenderer.setRouteIndex(best.bestRouteIndex);
+      }
+    } catch(e) {}
     renderResumoOtimizacao(best.result);
   });
 }
