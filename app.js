@@ -1571,8 +1571,8 @@ const DeodatoCoupon = (() => {
   // Edite APENAS os 7 itens com "// AQUI:" — o resto você não precisa tocar.
 
   const COUPON_CONFIG = {
-    code: 'Segundaditimoiti',                          // (1) AQUI: NOME DO CUPOM
-    percent: 50,                         // (6) AQUI: % de desconto
+    code: 'segunda20off',                          // (1) AQUI: NOME DO CUPOM
+    percent: 20,                         // (6) AQUI: % de desconto
     maxDiscountBRL: 15,                  // (7) AQUI: TETO em R$
 
     // (2) AQUI: DATA de início (DD/MM/AAAA)
@@ -1583,7 +1583,7 @@ const DeodatoCoupon = (() => {
     // (4) AQUI: DATA de término (DD/MM/AAAA)
     endDate: '21/09/2025',
     // (5) AQUI: HORA de término (HH:MM 24h)
-    endTime: '19:07',
+    endTime: '19:59',
 
     // VEÍCULO/SEGMENTO: [] = TODOS. Exemplos: ['moto.bau','moto.food','carro','fiorino','hr_ducato','iveco_master']
     allowedSegments: []
