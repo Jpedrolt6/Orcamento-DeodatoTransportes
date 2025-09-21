@@ -61,6 +61,24 @@
           </div>
         </div>
 
+        <!-- ================= CUPOM DE DESCONTO (AGORA AQUI, ENTRE SERVIÇO/TIPO E CALCULAR) ================ -->
+        <div class="cupom-box">
+          <label for="couponInput">Cupom de desconto</label>
+          <div class="cupom-row">
+            <input id="couponInput" type="text" placeholder="Digite seu cupom" autocomplete="off" />
+            <button id="applyCouponBtn" type="button">Aplicar</button>
+          </div>
+          <small id="couponMsg"></small>
+        </div>
+
+        <!-- Estilo rápido do campo de cupom -->
+        <style>
+          .cupom-box{margin-top:12px}
+          .cupom-row{display:flex;gap:8px}
+          #couponMsg{display:block;margin-top:6px;opacity:.9}
+        </style>
+        <!-- ================================================================================================ -->
+
         <div class="actions">
           <button class="primary" id="btnCalcular" type="button">Calcular</button>
           <!-- Botão do Whats foi movido para o Resumo -->
@@ -70,10 +88,31 @@
       <aside class="card glass">
         <h2>Resumo</h2>
         <div id="resumo" class="resumo">
+          <!-- DISTÂNCIA -->
           <div class="metric">
             <span class="lbl">Distância</span>
             <span class="val" id="mDist">—</span>
           </div>
+
+          <!-- CUPOM (entre Distância e Valor) -->
+          <div id="resumoCupomCard" class="resumo-pill" style="display:none;">
+            <span>Cupom</span>
+            <strong id="resumoCupomValue">-</strong>
+          </div>
+
+          <!-- estilo do pill -->
+          <style>
+            .resumo-pill{
+              background: rgba(255,255,255,0.06);
+              border-radius: 12px;
+              padding: 10px 14px;
+              display: flex; justify-content: space-between; align-items: center;
+              margin: 8px 0;
+            }
+            #resumoCupomCard strong{ font-weight: 700; }
+          </style>
+
+          <!-- VALOR -->
           <div class="metric">
             <span class="lbl">Valor</span>
             <span class="val" id="mValor">—</span>
@@ -95,22 +134,6 @@
         </div>
       </aside>
     </main>
-<!-- CUPOM DE DESCONTO – Deodato Transportes -->
-<div class="cupom-box">
-  <label for="couponInput">Cupom de desconto</label>
-  <div class="cupom-row">
-    <input id="couponInput" type="text" placeholder="Digite seu cupom" autocomplete="off" />
-    <button id="applyCouponBtn" type="button">Aplicar</button>
-  </div>
-  <small id="couponMsg"></small>
-</div>
-
-<!-- (Opcional) um estilo rápido; ajuste se quiser -->
-<style>
-  .cupom-box{margin-top:12px}
-  .cupom-row{display:flex;gap:8px}
-  #couponMsg{display:block;margin-top:6px;opacity:.9}
-</style>
 
     <footer class="foot">
       <p>© Deodato Transportes — São Paulo • Brasil</p>
