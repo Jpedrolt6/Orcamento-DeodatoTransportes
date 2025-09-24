@@ -17,6 +17,91 @@ const MIN_SUGGESTIONS = 1;
 const COUNTRY_CODE    = "br";
 const CACHE_TTL_MS    = 3 * 60 * 1000; // 3min
 
+// === Deodato OS (Apps Script) ===
+// use SEMPRE o /exec publicado (não o /dev)
+const OS_ENDPOINT = "https://script.google.com/macros/s/AKfycbxl_sW228PtcuwXMLULJmOkJEn5Pt7k2yLZ48G-s50Yvgu8kwOenymh7w_heLI6MOUk2g/exec";
+
+
+async function criarComprovanteOS(payload) {
+  // ID curto (8) – o mesmo que vai pra planilha e para o link
+  function makeId(n) {
+    var abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    var out = '';
+    for (var i = 0; i < n; i++) out += abc[Math.floor(Math.random() * abc.length)];
+    return out;
+  }
+  var id = makeId(8);
+
+  // Monta objeto minimal (o que precisa aparecer no view)
+  var minimal = {
+    id: id,
+    createdAt: payload && payload.createdAt,
+    servicoKey: payload && payload.servicoKey,
+    servicoTxt: payload && payload.servicoTxt,
+    km: payload && payload.km,
+    preTotal: payload && payload.preTotal,
+    desconto: (payload && payload.desconto) != null ? payload.desconto : 0,
+    valorFinal: payload && payload.valorFinal,
+    cupom: (payload && payload.cupom) ? payload.cupom : null,
+    origem: (payload && payload.origem) ? payload.origem : null,
+    paradas: (payload && payload.paradas) ? payload.paradas : [],
+    destino: (payload && payload.destino) ? payload.destino : null
+  };
+
+  // Link que vai no Whats (mesmo ID) + anti-cache
+  var viewUrl = OS_ENDPOINT + "?action=view&id=" + encodeURIComponent(id) + "&t=" + Date.now();
+
+  // 1) DISPARO “IMBATÍVEL” VIA GET (sem CORS) — payload enxuto na querystring
+  try {
+    var tiny = {
+      id: id,
+      createdAt: minimal.createdAt,
+      servicoKey: minimal.servicoKey,
+      servicoTxt: minimal.servicoTxt,
+      km: minimal.km,
+      preTotal: minimal.preTotal,
+      desconto: minimal.desconto,
+      valorFinal: minimal.valorFinal,
+      cupom: (minimal.cupom && minimal.cupom.code) ? minimal.cupom.code : (typeof minimal.cupom === 'string' ? minimal.cupom : ''),
+      origem: minimal.origem && minimal.origem.endereco || '',
+      destino: minimal.destino && minimal.destino.endereco || '',
+      paradas: (minimal.paradas || []).map(p => p && p.endereco || '').filter(Boolean).join(' || ')
+    };
+    var qs = Object.keys(tiny).map(k => k + "=" + encodeURIComponent(tiny[k] == null ? "" : String(tiny[k]))).join("&");
+    var img = new Image();
+    img.referrerPolicy = "no-referrer";
+    img.src = OS_ENDPOINT + "?action=create&" + qs + "&t=" + Date.now(); // doGet(action=create) no GAS
+    // (não precisamos aguardar; é fire-and-forget)
+  } catch (e) {}
+
+  // 2) POST completo (mantido) — se o servidor aceitar POST, grava também com todos os campos
+  try {
+    var bodyStr = "action=create&data=" + encodeURIComponent(JSON.stringify(minimal));
+    var sent = false;
+    if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+      var blob = new Blob([bodyStr], { type: "application/x-www-form-urlencoded;charset=UTF-8" });
+      sent = navigator.sendBeacon(OS_ENDPOINT, blob);
+    }
+    if (!sent && typeof fetch !== "undefined") {
+      fetch(OS_ENDPOINT, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+        body: bodyStr
+      }).catch(function(){});
+    } else if (!sent) {
+      try {
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", OS_ENDPOINT, true);
+        xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8");
+        xhr.send(bodyStr);
+      } catch(e){}
+    }
+  } catch (e) {}
+
+  // Devolve o link já com o mesmo ID usado na gravação
+  return viewUrl;
+}
 // ===== Caches locais =====
 const predCache    = new Map();
 const detailsCache = new Map();
@@ -59,7 +144,6 @@ function makeLinedTextarea(id, placeholder) {
     font-family: inherit; font-size: 13px; line-height: 1.4;
     outline: none; box-shadow:none;
   `;
-  // auto-grow leve quando visível
   const autoGrow = () => {
     if (ta.style.display === 'none') return;
     ta.style.height = 'auto';
@@ -75,10 +159,8 @@ function makeLinedTextarea(id, placeholder) {
 function ensureInfoField(afterInputEl, infoId, placeholder) {
   if (!afterInputEl || !infoId) return;
 
-  // se já existe botão, não duplica (textarea pode ainda não existir)
   if (document.getElementById(`btn-${infoId}`)) return;
 
-  // cria botão toggle
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.id = `btn-${infoId}`;
@@ -93,10 +175,8 @@ function ensureInfoField(afterInputEl, infoId, placeholder) {
     cursor:pointer; font-size:12px; font-weight:600;
   `;
 
-  // cria textarea (inicialmente oculta) só uma vez
   const ta = makeLinedTextarea(infoId, placeholder);
 
-  // Ao clicar, abre/fecha e foca
   btn.addEventListener('click', () => {
     const opened = ta.style.display !== 'none';
     ta.style.display = opened ? 'none' : '';
@@ -105,7 +185,6 @@ function ensureInfoField(afterInputEl, infoId, placeholder) {
     if (!opened) setTimeout(() => ta.focus(), 0);
   });
 
-  // Insere botão e textarea logo abaixo do input
   afterInputEl.insertAdjacentElement('afterend', btn);
   btn.insertAdjacentElement('afterend', ta);
 }
@@ -202,11 +281,11 @@ function normalizeNewSuggestions(resp) {
   for (const s of list) {
     const p  = s.placePrediction || {};
     const sf = s.structuredFormat || {};
-    theMain = typeof sf.mainText === "object" ? (sf.mainText?.text || "") : (sf.mainText || "");
+    const main = typeof sf.mainText === "object" ? (sf.mainText?.text || "") : (sf.mainText || "");
     const secondary = typeof sf.secondaryText === "object" ? (sf.secondaryText?.text || "") : (sf.secondaryText || "");
-    const description = [theMain, secondary].filter(Boolean).join(", ") || (p.text?.text || p.text || "");
+    const description = [main, secondary].filter(Boolean).join(", ") || (p.text?.text || p.text || "");
     if (!p.placeId) continue;
-    out.push({ description, structured_formatting: { main_text: theMain || description, secondary_text: secondary || "" }, place_id: p.placeId });
+    out.push({ description, structured_formatting: { main_text: main || description, secondary_text: secondary || "" }, place_id: p.placeId });
   }
   return out;
 }
@@ -340,44 +419,87 @@ function setFoodInfo(show) {
 }
 
 // ---------- Monta mensagem WhatsApp ----------
-function montarMensagem(origem, destino, kmTexto, valor, servicoTxt, paradasList = [], extraObs = "") {
-  const linhas = [];
-  const origemInfo = getInfoValue("origemInfo");
-  linhas.push("*RETIRADA*","📍 " + origem);
-  if (origemInfo) linhas.push("📝 " + origemInfo);
-  linhas.push("");
+function montarMensagem(origem, destino, kmTexto, valor, servicoTxt, paradasList = [], extraObs = "", comprovanteUrl = "") {
+  const MAX_WPP_TEXT_LEN = 1400;
 
-  if (paradasList.length) {
-    paradasList.forEach((p, i) => {
-      const end = p?.formatted_address || p?.description || "";
-      const info = getInfoValue(`paradaInfo-${i}`);
-      if (end) {
-        linhas.push(`*PARADA ${i + 1}*`, "📍 " + end);
-        if (info) linhas.push("📝 " + info);
-        linhas.push("");
-      }
-    });
-  }
-
-  if (destino) {
-    const destinoInfo = getInfoValue("destinoInfo");
-    linhas.push("*ENTREGA*","📍 " + destino);
-    if (destinoInfo) linhas.push("📝 " + destinoInfo);
-    linhas.push("");
-  }
-
-  linhas.push(`*Tipo de veículo:* ${servicoTxt}`);
-  if (extraObs) linhas.push(extraObs);
-
-  // Valor
-  linhas.push("", "💵 " + fmtBRL(valor));
-
-  // FINAL da OS: KM (sempre) + CUPOM (só se aplicado)
-  linhas.push("🛣️ Km " + kmTexto);
+  const br = "\n";
+  const fmtAddr = (s, max = 120) => {
+    const t = String(s || "").trim();
+    return t.length > max ? t.slice(0, max - 1) + "…" : t;
+  };
   const cupomLine = (window.__waCouponLine || "").trim();
-  if (cupomLine) linhas.push(cupomLine);
 
-  return encodeURIComponent(linhas.join("\n"));
+  const buildMsg = (mode) => {
+    const linhas = [];
+    const origemInfo  = mode === "full" ? (getInfoValue("origemInfo") || "") : "";
+    const destinoInfo = mode === "full" ? (getInfoValue("destinoInfo") || "") : "";
+
+    linhas.push("*RETIRADA*", "📍 " + fmtAddr(origem, mode === "full" ? 9999 : mode === "compact" ? 120 : 80));
+    if (origemInfo) linhas.push("📝 " + origemInfo);
+    linhas.push("");
+
+    if (Array.isArray(paradasList) && paradasList.length) {
+      if (mode === "ultra") {
+        linhas.push(`*PARADAS:* ${paradasList.length} local${paradasList.length > 1 ? "es" : ""}`);
+        linhas.push("");
+      } else {
+        paradasList.forEach((p, i) => {
+          const end = p?.formatted_address || p?.description || "";
+          if (!end) return;
+          linhas.push(`*PARADA ${i + 1}*`, "📍 " + fmtAddr(end, mode === "full" ? 9999 : 120));
+          if (mode === "full") {
+            const info = getInfoValue(`paradaInfo-${i}`);
+            if (info) linhas.push("📝 " + info);
+          }
+          linhas.push("");
+        });
+      }
+    }
+
+    if (destino) {
+      linhas.push("*ENTREGA*", "📍 " + fmtAddr(destino, mode === "full" ? 9999 : mode === "compact" ? 120 : 80));
+      if (destinoInfo) linhas.push("📝 " + destinoInfo);
+      linhas.push("");
+    }
+
+    linhas.push(`*Tipo de veículo:* ${servicoTxt}`);
+    if (extraObs && mode !== "ultra") linhas.push(extraObs);
+
+    linhas.push("", "💵 " + fmtBRL(valor));
+    linhas.push("🛣️ Km " + kmTexto);
+    if (cupomLine) linhas.push(cupomLine);
+
+    if (comprovanteUrl) {
+      linhas.push("");
+      linhas.push("🔗 Comprovante (24h): " + comprovanteUrl);
+    }
+
+    return linhas.join(br);
+  };
+
+  const tryModes = ["full", "compact", "ultra"];
+  for (const mode of tryModes) {
+    const msg = buildMsg(mode);
+    const enc = encodeURIComponent(msg);
+    if (enc.length <= MAX_WPP_TEXT_LEN) return enc;
+
+    const trimmed = encodeURIComponent(
+      msg
+        .split("\n")
+        .filter(line => !/^📝\s/.test(line))
+        .join("\n")
+    );
+    if (trimmed.length <= MAX_WPP_TEXT_LEN) return trimmed;
+  }
+
+  const ess = [];
+  ess.push("*RETIRADA*", "📍 " + fmtAddr(origem, 70), "");
+  if (destino) { ess.push("*ENTREGA*", "📍 " + fmtAddr(destino, 70), ""); }
+  ess.push(`*Tipo de veículo:* ${servicoTxt}`, "", "💵 " + fmtBRL(valor), "🛣️ Km " + kmTexto);
+  if (cupomLine) ess.push(cupomLine);
+  if (comprovanteUrl) { ess.push("", "🔗 Comprovante (24h): " + comprovanteUrl); }
+
+  return encodeURIComponent(ess.join("\n"));
 }
 
 // ===================== debounce =====================
@@ -450,7 +572,6 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
   let sessionToken = newSessionToken();
   let activeIndex  = -1;
 
-  // caixinha de sugestões
   const list = document.createElement("div");
   list.className = "suggestions";
   Object.assign(list.style, {
@@ -515,7 +636,6 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
         } catch { hideList(); }
       });
 
-      // conteúdo visual do item
       const mainText = p.structured_formatting?.main_text || p.description || "";
       const secondaryText = p.structured_formatting?.secondary_text || "";
       item.innerHTML = `
@@ -646,7 +766,6 @@ function ensureMotoTipoControl() {
 function ensureOptimizeUI() {
   const actions = document.querySelector(".actions");
   if (actions) {
-    // remove duplicados de “Rota Otimizada”
     const sameTextBtns = Array.from(actions.querySelectorAll("button")).filter(b => (b.textContent||"").trim().toLowerCase() === "rota otimizada");
     sameTextBtns.slice(1).forEach(b => b.remove());
     let btn = sameTextBtns[0] || document.getElementById("btnOtimizar");
@@ -662,7 +781,6 @@ function ensureOptimizeUI() {
       btn.id = "btnOtimizar";
     }
 
-    // subtítulo solicitado
     let sub = document.getElementById("otSub");
     if (!sub) {
       sub = document.createElement("div");
@@ -732,7 +850,6 @@ function configurarAutocomplete() {
 
   aplicarBloqueioNosCamposBasicos();
 
-  // Botão "Adicionar informações" + textarea (abre/fecha) com fundo branco
   ensureInfoField(origemInput, "origemInfo", "Adicionar informações: Nome de quem procurar, Apto, Conjunto e etc...");
   ensureInfoField(destinoInput, "destinoInfo", "Adicionar informações: ");
 
@@ -759,7 +876,6 @@ function adicionarParadaInput() {
   const input = document.getElementById(`parada-${idx}`);
   bloquearEnter(input);
 
-  // Botão/textarea de informações (abre/fecha)
   ensureInfoField(wrap.querySelector("input"), `paradaInfo-${idx}`, "Adicionar informações");
 
   setupInputAutocomplete({ inputEl: input, onPlaceChosen: (place) => { paradasPlaces[idx] = place; } });
@@ -1033,7 +1149,6 @@ async function calcularNormal(e){
   const servico = servicoSel?.value || "";
   const tipoMoto = document.getElementById("motoTipo")?.value || "";
 
-  // tipo obrigatório quando motoboy
   if (servico === "moto" && !tipoMoto) {
     markInvalid(document.getElementById("motoTipo"), "Selecione Baú ou FOOD.");
     mDistEl && (mDistEl.textContent  = "—");
@@ -1123,12 +1238,11 @@ async function calcularNormal(e){
       destination: destinoLoc,
       waypoints,
       optimizeWaypoints: false,
-      provideRouteAlternatives: true,            // << pegar alternativas
+      provideRouteAlternatives: true,
       travelMode: google.maps.TravelMode.DRIVING
     }, (res, status) => {
       if (status !== "OK" || !res?.routes?.length) { esconderWhats(); return; }
 
-      // Escolhe a rota mais rápida (menor duração total)
       let bestMeters = 0, bestSecs = Infinity;
       for (const r of res.routes) {
         const legs = r.legs || [];
@@ -1137,7 +1251,7 @@ async function calcularNormal(e){
         if (secs < bestSecs) { bestSecs = secs; bestMeters = meters; }
       }
 
-      const kmInt = Math.round(bestMeters / 1000); // cobrar pelo MESMO critério do RESUMO
+      const kmInt = Math.round(bestMeters / 1000);
       finalizarComKm(kmInt, bestMeters);
     });
   } else {
@@ -1145,7 +1259,9 @@ async function calcularNormal(e){
   }
 }
 
-function finalizarOrcamentoComKm(kmInt, paradasValidas, servico, totalMeters){
+async function finalizarOrcamentoComKm(kmInt, paradasValidas, servico, totalMeters){
+  window.__osShortUrl = "";
+
   const tipo    = document.getElementById("motoTipo")?.value || "";
   const pedagioInput = document.getElementById("pedagio");
   const pedagioVal = pedagioInput ? Number(pedagioInput.value || 0) : 0;
@@ -1168,40 +1284,74 @@ function finalizarOrcamentoComKm(kmInt, paradasValidas, servico, totalMeters){
   if (mDistEl)  mDistEl.textContent  = kmDisplay;
   if (mValorEl) mValorEl.textContent = fmtBRL(valor);
 
-  // <<< NOVO: base para o módulo de cupom + aplica (atualiza card "CUPOM" e total)
   window.__preTotal = valor;
   let cup = null;
   try { cup = DeodatoCoupon.apply(); } catch {}
 
-  // valor final (com cupom, se aplicado)
   const valorFinal = (cup && cup.ok) ? cup.final : valor;
 
   clearInvalid(document.getElementById('origem'));
   clearInvalid(document.getElementById('destino'));
   document.querySelectorAll('[id^="parada-"]').forEach(clearInvalid);
 
-  // link maps no resumo (sempre) — inclui ENTREGA
   const pointsForLink = [origemPlace, ...paradasValidas];
   if (destinoPlace?.formatted_address || destinoPlace?.geometry?.location) pointsForLink.push(destinoPlace);
   showResumoMapsLink(pointsForLink[0], pointsForLink.slice(1));
 
   const destinoTexto = destinoPlace?.formatted_address || (paradasValidas.length ? paradasValidas[paradasValidas.length - 1]?.formatted_address : "");
-  const textoURL = montarMensagem(
+
+  // 1) monta link do Whats (sem comprovante) para a UI não travar
+  const btnWhats = getBtnWhats();
+  let textoURL = montarMensagem(
     origemPlace.formatted_address,
     destinoTexto,
-    kmDisplay,                  // mostra igual ao resumo
-    valorFinal,                 // total final (com desconto, se houver)
+    kmDisplay,
+    valorFinal,
     servicoTxt,
     paradasValidas,
-    extraObs
+    extraObs,
+    window.__osShortUrl || ""
   );
-
-  const btnWhats = getBtnWhats();
   if (btnWhats) btnWhats.href = `https://api.whatsapp.com/send?phone=${WHATS_NUM}&text=${textoURL}`;
 
-  mostrarWhats(); pulseWhats(); // sem scroll para o botão
-  scrollToMetrics();            // rola para KM/Valor
+  mostrarWhats(); pulseWhats();
+  scrollToMetrics();
   lastQuote = { hasQuote: true, servico, motoTipo: servico === "moto" ? (document.getElementById("motoTipo")?.value || "") : null };
+
+  // 2) salva no Apps Script e ATUALIZA o link do Whats com o comprovante
+  try{
+    const payload = {
+      createdAt: new Date().toISOString(),
+      servicoKey: servico,
+      servicoTxt,
+      km: kmDisplay,
+      preTotal: valor,
+      valorFinal,
+      cupom: window.__couponView || null,
+      desconto: window.__descontoView || 0,
+      origem: { endereco: origemPlace?.formatted_address || "", info: getInfoValue("origemInfo") },
+      paradas: paradasValidas.map((p, i) => ({ endereco: p?.formatted_address || "", info: getInfoValue(`paradaInfo-${i}`) })),
+      destino: destinoTexto ? { endereco: destinoTexto, info: getInfoValue("destinoInfo") } : null
+    };
+
+    const viewUrl = await criarComprovanteOS(payload);
+    if (viewUrl) {
+      window.__osShortUrl = viewUrl;
+      const textoURL2 = montarMensagem(
+        origemPlace.formatted_address,
+        destinoTexto,
+        kmDisplay,
+        valorFinal,
+        servicoTxt,
+        paradasValidas,
+        extraObs,
+        viewUrl
+      );
+      if (btnWhats) btnWhats.href = `https://api.whatsapp.com/send?phone=${WHATS_NUM}&text=${textoURL2}`;
+    }
+  } catch(e){
+    console.error('Falha ao gerar o comprovante 24h:', e);
+  }
 }
 
 // ===================== Validação (utilitários) =====================
@@ -1237,7 +1387,6 @@ function initDirectionsOnce() {
   if (!directionsService) directionsService = new google.maps.DirectionsService();
   if (!directionsRenderer) {
     directionsRenderer = new google.maps.DirectionsRenderer({ suppressMarkers: true });
-    // Se tiver um mapa, conecte aqui: directionsRenderer.setMap(seuMapa);
   }
 }
 
@@ -1259,7 +1408,6 @@ function renderResumoOtimizacao(result) {
     itens.push(`<li><b>Entrega</b>: ${texto}</li>`);
   }
 
-  // Link e preview devem incluir ENTREGA no final
   const orderedForLink = [...paradasPlaces];
   if (destinoPlace) orderedForLink.push(destinoPlace);
 
@@ -1280,7 +1428,6 @@ function renderResumoOtimizacao(result) {
 
   showResumoMapsLink(origemPlace, orderedForLink);
 
-  // ligar botão
   document.getElementById("btnCalcularOt")?.addEventListener("click", calcularRotaOtimizada);
 }
 
@@ -1288,13 +1435,11 @@ function renderResumoOtimizacao(result) {
 function aplicarOrdemOtimizadaNosInputs(ordered) {
   if (!Array.isArray(ordered) || ordered.length === 0) return;
 
-  // último vira ENTREGA
   const last = ordered[ordered.length - 1];
   const destinoInput = document.getElementById("destino");
   if (destinoInput) destinoInput.value = last?.formatted_address || "";
   destinoPlace = last;
 
-  // demais viram PARADAS
   const novosStops = ordered.slice(0, -1);
 
   const container = document.getElementById("paradas");
@@ -1337,10 +1482,9 @@ async function calcularRotaOtimizada() {
     return;
   }
 
-  // rota na ordem otimizada: origem -> paradas (mids) -> destino (último)
   const ordered = [...paradasPlaces];
   const destino = destinoPlace || ordered[ordered.length - 1];
-  const mids = ordered; // todos os paradasPlaces são intermediários; entrega já está em destinoPlace
+  const mids = ordered;
   if (!destino?.geometry?.location) {
     alert("Não foi possível identificar o destino da rota otimizada.");
     return;
@@ -1355,13 +1499,12 @@ async function calcularRotaOtimizada() {
     origin: origemLoc,
     destination: destinoLoc,
     waypoints,
-    optimizeWaypoints: false, // já está na ordem ótima
+    optimizeWaypoints: false,
     provideRouteAlternatives: true,
     travelMode: google.maps.TravelMode.DRIVING
   }, (res, status) => {
     if (status !== "OK" || !res?.routes?.length) { esconderWhats(); return; }
 
-    // escolhe a rota mais rápida
     let bestMeters = 0, bestSecs = Infinity;
     for (const r of res.routes) {
       const legs = r.legs || [];
@@ -1371,13 +1514,12 @@ async function calcularRotaOtimizada() {
     }
 
     const kmInt = Math.round(bestMeters / 1000);
-    finalizarOrcamentoComKm(kmInt, mids, servico, bestMeters); // mids = paradas; ENTREGA = destinoPlace
+    finalizarOrcamentoComKm(kmInt, mids, servico, bestMeters);
   });
 }
 
 /**
  * Otimiza com RETIRADA fixa. ENTREGA (se houver) vira candidata junto das PARADAS.
- * O algoritmo testa cada candidato como destino final e otimiza o restante como intermediárias.
  */
 function otimizarRotaComGoogle() {
   if (!window.google || !google.maps?.DirectionsService) {
@@ -1389,7 +1531,6 @@ function otimizarRotaComGoogle() {
     return;
   }
 
-  // Reconciliar paradas digitadas
   const inputsParadas = Array.from(document.querySelectorAll('[id^="parada-"]'));
   const tasks = inputsParadas.map(async (inp, idx) => {
     const txt = (inp.value || "").trim();
@@ -1456,7 +1597,6 @@ function otimizarRotaComGoogle() {
     const lastStop = candidatos[best.destIndex];
     const ordered = [...orderedMids, lastStop];
 
-    // Atualiza estado e inputs na ordem ótima (último vira ENTREGA)
     paradasPlaces = [...ordered.slice(0, -1)];
     destinoPlace  = lastStop;
     aplicarOrdemOtimizadaNosInputs(ordered);
@@ -1473,7 +1613,7 @@ function otimizarRotaComGoogle() {
 
 // === ROTA OTIMIZADA -> rolar até o botão verde "Calcular rota otimizada" ===
 (function setupScrollToOptimizedButton() {
-  const HEADER_OFFSET = 0; // se tiver header fixo cobrindo o topo, coloque por ex.: 96
+  const HEADER_OFFSET = 0;
   const TEXT_ROTA = /^\s*rota\s+otimizada\s*$/i;
   const TEXT_CALCULAR = /^\s*calcular\s+rota\s+otimizada\s*$/i;
 
@@ -1497,20 +1637,16 @@ function otimizarRotaComGoogle() {
   function scrollToEl(el) {
     const y = el.getBoundingClientRect().top + window.pageYOffset - HEADER_OFFSET;
     window.scrollTo({ top: y, behavior: 'smooth' });
-    // micro realce sem CSS extra
     const old = el.style.boxShadow;
     el.style.boxShadow = '0 0 0 6px rgba(0,0,0,0.15)';
     setTimeout(() => { el.style.boxShadow = old; }, 700);
     try { el.focus({ preventScroll: true }); } catch {}
   }
 
-  // espera o botão existir/ficar visível (até ~5s)
   function waitForOptimizedCalculateBtn(onFound) {
-    // 1) tenta agora
     let target = findButtonByText(TEXT_CALCULAR);
     if (target && isVisible(target)) { onFound(target); return () => {}; }
 
-    // 2) observa mutações (aparição tardia)
     const obs = new MutationObserver(() => {
       target = findButtonByText(TEXT_CALCULAR);
       if (target && isVisible(target)) {
@@ -1522,7 +1658,6 @@ function otimizarRotaComGoogle() {
     });
     obs.observe(document.body, { childList: true, subtree: true });
 
-    // 3) polling (fallback pra casos em que o botão troca só texto/estilo)
     const poll = setInterval(() => {
       target = findButtonByText(TEXT_CALCULAR);
       if (target && isVisible(target)) {
@@ -1533,66 +1668,42 @@ function otimizarRotaComGoogle() {
       }
     }, 100);
 
-    // 4) limite de segurança (5s)
     const stopAll = setTimeout(() => {
       obs.disconnect();
       clearInterval(poll);
     }, 5000);
 
-    // retorna função pra cancelar (não precisamos aqui, mas fica limpo)
     return () => { obs.disconnect(); clearInterval(poll); clearTimeout(stopAll); };
   }
 
-  // captura clique no botão/label de "ROTA OTIMIZADA" (sem mexer no HTML)
   document.addEventListener('click', (ev) => {
     const el = ev.target && ev.target.closest('button, [role="button"], a, label, .btn, .button');
     if (!el) return;
     const txt = (el.textContent || el.value || '').trim();
     if (!TEXT_ROTA.test(txt)) return;
 
-    // deixa o clique fazer o que já faz (abrir o card/sugestão do Google)
-    // e em seguida aguarda o botão verde aparecer para rolar até ele
     setTimeout(() => {
       waitForOptimizedCalculateBtn((btn) => scrollToEl(btn));
     }, 0);
   }, { passive: true });
 })();
 
-/*   COMO USAR NO DIA A DIA:
-   - Edite SÓ os 7 pontos marcados com // AQUI: (logo abaixo em COUPON_CONFIG)
-   - No seu fluxo de recálculo de preço, chame: DeodatoCoupon.apply()
-     (idealmente, após calcular o total antes do desconto)
-   -------------------------------------------------------------------------- */
-
+/* ====================== CUPOM ====================== */
 const DeodatoCoupon = (() => {
   'use strict';
 
-  /* ====================== CONFIGURAÇÃO (APENAS 7 ITENS) ====================== */
-  // Edite APENAS os 7 itens com "// AQUI:" — o resto você não precisa tocar.
-
   const COUPON_CONFIG = {
-    code: 'segunda20off',                          // (1) AQUI: NOME DO CUPOM
-    percent: 20,                         // (6) AQUI: % de desconto
-    maxDiscountBRL: 15,                  // (7) AQUI: TETO em R$
-
-    // (2) AQUI: DATA de início (DD/MM/AAAA)
-    startDate: '21/09/2025',
-    // (3) AQUI: HORA de início (HH:MM 24h)
-    startTime: '09:40',
-
-    // (4) AQUI: DATA de término (DD/MM/AAAA)
-    endDate: '21/09/2025',
-    // (5) AQUI: HORA de término (HH:MM 24h)
+    code: '10',
+    percent: 20,
+    maxDiscountBRL: 15,
+    startDate: '22/09/2025',
+    startTime: '07:40',
+    endDate: '22/09/2025',
     endTime: '19:59',
-
-    // VEÍCULO/SEGMENTO: [] = TODOS. Exemplos: ['moto.bau','moto.food','carro','fiorino','hr_ducato','iveco_master']
     allowedSegments: []
   };
-
-  /* ====================== GANCHOS/UTILS ====================== */
   const UI = { inputId: 'couponInput', buttonId: 'applyCouponBtn', msgId: 'couponMsg' };
 
-  // Transformar "R$ 40,00" ou "40,00" em 40
   function parseBRLTextToNumber(txt) {
     const s = String(txt||'').replace(/\s/g,'').replace(/[^\d,.-]/g,'').replace(/\./g,'').replace(',', '.');
     const n = parseFloat(s);
@@ -1604,7 +1715,6 @@ const DeodatoCoupon = (() => {
   const setMsg  = (t, ok=true) => { const el=getEl(UI.msgId); if(el){ el.textContent=t||''; el.style.color=ok?'#12a454':'#e5534b'; } };
 
   const Hooks = {
-    // Pega o total ANTES do desconto (com fallbacks).
     getPreTotal: () => {
       if (typeof window.getPrecoAntesDoDesconto === 'function') {
         try { const n = Number(window.getPrecoAntesDoDesconto()) || 0; if (n>0) return n; } catch {}
@@ -1621,7 +1731,6 @@ const DeodatoCoupon = (() => {
       return 0;
     },
 
-    // Retorna o segmento atual em chaves consistentes com allowedSegments
     getSegmentKey: () => {
       const servico = document.getElementById("servico")?.value || "";
       if (servico === "moto") {
@@ -1631,7 +1740,6 @@ const DeodatoCoupon = (() => {
       return servico || 'todos';
     },
 
-    // Atualiza o RESUMO (Valor e Card Cupom)
     onPriceUpdate: ({ preTotal, desconto, final, couponCode, couponPercent }) => {
       if (typeof window.atualizarResumoNaTela === 'function') {
         window.atualizarResumoNaTela({ preTotal, desconto, final, couponCode });
@@ -1642,11 +1750,9 @@ const DeodatoCoupon = (() => {
         window.__couponView   = couponCode;
       }
 
-      // Atualiza o número grande do Valor
       const elValor = document.getElementById('mValor');
       if (elValor) elValor.textContent = brl(final);
 
-      // Card "CUPOM"
       const cardCupom = document.getElementById('resumoCupomCard');
       const valCupom  = document.getElementById('resumoCupomValue');
       if (desconto > 0 && couponCode) {
@@ -1657,26 +1763,22 @@ const DeodatoCoupon = (() => {
       }
     },
 
-    // Atualiza **linha do cupom** para a OS e recompõe o link do Whats na hora
     onWhatsUpdate: ({ preTotal, desconto, final, couponCode, couponPercent }) => {
-      // Guarda a linha de cupom que a OS lê no final
       if (couponCode && desconto > 0) {
         window.__waCouponLine = `🏷️ Cupom ${couponCode} — -${brl(desconto)}${couponPercent ? ` (${couponPercent}%)` : ''}`;
       } else {
         window.__waCouponLine = "";
       }
 
-      // Re-montar o link do Whats caso já exista um orçamento
-      try {
-        const btn = document.getElementById("btnWhats");
-        if (!btn) return;
+      const btn = document.getElementById("btnWhats");
+      if (!btn) return;
 
+      try {
         const origemTxt  = origemPlace?.formatted_address || "";
         const destinoTxt = destinoPlace?.formatted_address
           || (paradasPlaces.length ? paradasPlaces[paradasPlaces.length - 1]?.formatted_address : "");
         const kmTxt = document.getElementById("mDist")?.textContent || "";
 
-        // texto do serviço
         const servSel = document.getElementById("servico")?.value || "";
         const tipo    = document.getElementById("motoTipo")?.value || "";
         let servicoTxt = "";
@@ -1686,7 +1788,8 @@ const DeodatoCoupon = (() => {
         else if (servSel === "hr_ducato") servicoTxt = "*_HR / Ducato_*";
         else if (servSel === "iveco_master") servicoTxt = "*_Iveco / Master_*";
 
-        // usa o valor FINAL com desconto
+        const comprovanteLink = (typeof window.__osShortUrl === 'string' && window.__osShortUrl) ? window.__osShortUrl : "";
+
         const textoURL = montarMensagem(
           origemTxt,
           destinoTxt,
@@ -1694,15 +1797,19 @@ const DeodatoCoupon = (() => {
           final,
           servicoTxt,
           paradasPlaces.slice(),
-          ""
+          "",
+          comprovanteLink
         );
-
         btn.href = `https://api.whatsapp.com/send?phone=${WHATS_NUM}&text=${textoURL}`;
+
+        if (btn.getAttribute('aria-disabled') === 'true') {
+          try { mostrarWhats(); } catch {}
+        }
       } catch {}
     }
+
   };
 
-  // Converte "DD/MM/AAAA" + "HH:MM" => "YYYY-MM-DDTHH:MM:00-03:00"
   function toISO_saoPaulo(dateBR, time24) {
     const [d,m,y] = String(dateBR).split('/').map(Number);
     const [hh,mm] = String(time24).split(':').map(Number);
@@ -1710,7 +1817,6 @@ const DeodatoCoupon = (() => {
     return `${y}-${pad(m)}-${pad(d)}T${pad(hh)}:${pad(mm)}:00-03:00`;
   }
 
-  // Monta objeto operacional
   function buildCouponFromConfig() {
     return {
       code: (COUPON_CONFIG.code || '').trim().toUpperCase(),
@@ -1730,7 +1836,7 @@ const DeodatoCoupon = (() => {
   }
 
   function segmentAllowed(seg, allowedList) {
-    if (!allowedList || !allowedList.length) return true; // vazio = TODOS
+    if (!allowedList || !allowedList.length) return true;
     const s = String(seg||'').toLowerCase();
     return allowedList.map(x=>String(x).toLowerCase()).includes(s);
   }
@@ -1746,7 +1852,6 @@ const DeodatoCoupon = (() => {
     const coupon = buildCouponFromConfig();
     const codeTyped = (getEl(UI.inputId)?.value || '').trim().toUpperCase();
 
-    // Se não digitou ou código diferente
     if (!codeTyped || codeTyped !== coupon.code) {
       setMsg(codeTyped ? 'Cupom inválido.' : '');
       const baseAtual = Hooks.getPreTotal() || parseBRLTextToNumber(document.getElementById('mValor')?.textContent);
@@ -1755,7 +1860,6 @@ const DeodatoCoupon = (() => {
       return { ok:false, reason: codeTyped ? 'not_found' : 'empty' };
     }
 
-    // Janela de tempo
     const now = new Date();
     const err = inWindow(now, coupon.start, coupon.end);
     if (err) {
@@ -1766,7 +1870,6 @@ const DeodatoCoupon = (() => {
       return { ok:false, reason:'time_window' };
     }
 
-    // Segmento
     const segment = Hooks.getSegmentKey();
     if (!segmentAllowed(segment, coupon.allowedSegments)) {
       setMsg('Este cupom não é válido para o tipo de veículo/serviço selecionado.', false);
@@ -1776,7 +1879,6 @@ const DeodatoCoupon = (() => {
       return { ok:false, reason:'segment' };
     }
 
-    // Preço base (com fallback)
     let preTotal = Hooks.getPreTotal();
     if (!preTotal || preTotal <= 0) {
       preTotal = parseBRLTextToNumber(document.getElementById('mValor')?.textContent);
@@ -1786,7 +1888,6 @@ const DeodatoCoupon = (() => {
       return { ok:false, reason:'no_pre_total' };
     }
 
-    // Cálculo
     const desconto = calcDiscountPercent(preTotal, coupon.value, coupon.maxDiscount);
     const final    = money2(preTotal - desconto);
 
@@ -1814,7 +1915,6 @@ const DeodatoCoupon = (() => {
 
   return { apply, brl };
 })();
-
 
 // ===================== Init =====================
 function initOrcamento() {
