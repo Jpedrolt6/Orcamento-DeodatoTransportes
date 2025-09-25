@@ -49,7 +49,9 @@ async function criarComprovanteOS(payload) {
   };
 
   // Link que vai no Whats (mesmo ID) + anti-cache
-  var viewUrl = OS_ENDPOINT + "?action=view&id=" + encodeURIComponent(id) + "&t=" + Date.now();
+  // Link curto (Netlify redireciona /k/:id -> GAS ?action=view&id=:id)
+const SHORT_BASE = "https://deodatotransportes.com.br/k/";
+var viewUrl = SHORT_BASE + encodeURIComponent(id);
 
   // 1) DISPARO “IMBATÍVEL” VIA GET (sem CORS) — payload enxuto na querystring
   try {
