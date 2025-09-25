@@ -1695,13 +1695,13 @@ const DeodatoCoupon = (() => {
   'use strict';
 
   const COUPON_CONFIG = {
-    code: '10',
-    percent: 20,
-    maxDiscountBRL: 15,
-    startDate: '22/09/2025',
+    code: 'quinta10off',
+    percent: 10,
+    maxDiscountBRL: 10,
+    startDate: '25/09/2025',
     startTime: '07:40',
-    endDate: '22/09/2025',
-    endTime: '19:59',
+    endDate: '25/09/2025',
+    endTime: '15:01',
     allowedSegments: []
   };
   const UI = { inputId: 'couponInput', buttonId: 'applyCouponBtn', msgId: 'couponMsg' };
