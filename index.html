@@ -88,15 +88,19 @@
       <aside class="card glass">
         <h2>Resumo</h2>
         <div id="resumo" class="resumo">
+          <!-- DISTÂNCIA -->
           <div class="metric">
             <span class="lbl">Distância</span>
             <span class="val" id="mDist">—</span>
           </div>
 
+          <!-- CUPOM (entre Distância e Valor) -->
           <div id="resumoCupomCard" class="resumo-pill" style="display:none;">
             <span>Cupom</span>
             <strong id="resumoCupomValue">-</strong>
           </div>
+
+          <!-- estilo do pill -->
           <style>
             .resumo-pill{
               background: rgba(255,255,255,0.06);
@@ -108,6 +112,7 @@
             #resumoCupomCard strong{ font-weight: 700; }
           </style>
 
+          <!-- VALOR -->
           <div class="metric">
             <span class="lbl">Valor</span>
             <span class="val" id="mValor">—</span>
@@ -122,7 +127,9 @@
             </ul>
           </div>
 
+          <!-- Aparece só após cálculo OK -->
           <a class="cta wa hide" id="btnWhats" href="#" target="_blank" rel="noopener">Enviar Orçamento no WhatsApp</a>
+
           <button class="outline" id="btnLimpar" type="button">Limpar tudo</button>
         </div>
       </aside>
@@ -134,26 +141,42 @@
   </div>
 
   <!-- 1) Seu app primeiro -->
-  <script src="app.js?v=12" defer></script>
+  <script src="app.js?v=14" defer></script>
 
-  <!-- 2) Callback global para o Google Maps (corrige "initOrcamento is not a function") -->
+  <!-- 2) Callback global robusto (evita condição de corrida no reload) -->
   <script>
-    // esta função precisa existir no escopo global para o callback do Maps
-    window.initOrcamento = function () {
-      try {
-        // se o app expõe um inicializador, chama
-        if (window.initApp) window.initApp();
-      } catch (e) {
-        console.error(e);
+    (function () {
+      let started = false;
+
+      function mapsReady() {
+        return !!(window.google && google.maps && google.maps.places);
       }
-    };
+
+      function tryStart() {
+        if (started) return;
+        if (typeof window.initApp === "function" && mapsReady()) {
+          started = true;
+          try { window.initApp(); } catch (e) { console.error(e); }
+        } else {
+          setTimeout(tryStart, 50);
+        }
+      }
+
+      // chamado pelo ?callback=initOrcamento
+      window.initOrcamento = function () {
+        tryStart();
+      };
+
+      // fallback extra caso o callback não dispare por algum motivo
+      document.addEventListener("DOMContentLoaded", tryStart);
+    })();
   </script>
 
   <!-- 3) Loader do Maps com Places e callback -->
   <script
     async defer
     referrerpolicy="origin"
-    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAhGvrR_Gp4e0ROB1BInjNBSUQdHEh6ews&libraries=places&v=weekly&language=pt-BR&region=BR&callback=initOrcamento">
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAhGvrR_Gp4e0ROB1BInjNBSUQdHEh6ews&libraries=places&v=weekly&loading=async&language=pt-BR&region=BR&callback=initOrcamento">
   </script>
 </body>
 </html>

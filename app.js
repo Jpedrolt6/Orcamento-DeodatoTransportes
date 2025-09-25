@@ -1925,4 +1925,25 @@ function initOrcamento() {
   configurarEventos();
   esconderWhats();
 }
-window.initOrcamento = initOrcamento;
+// --- Exposição global com proteção contra dupla-execução e fallback ---
+(function () {
+  // guarda a função real
+  const realInit = initOrcamento;
+
+  // flag global para não inicializar duas vezes
+  window.__booted = window.__booted || false;
+
+  // callback que o Google Maps chama
+  window.initOrcamento = function () {
+    if (window.__booted) return;
+    window.__booted = true;
+    try { realInit(); } catch (e) { console.error(e); }
+  };
+
+  // fallback: se o Maps já estiver pronto (ex.: ao dar F5) e o callback não disparar,
+  // inicializa manualmente
+  if (window.google && google.maps) {
+    setTimeout(() => window.initOrcamento(), 0);
+  }
+})();
+
