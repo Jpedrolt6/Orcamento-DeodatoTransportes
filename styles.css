@@ -1,13 +1,13 @@
 :root{
-  --bg:#0c0f14;
-  --card:#0f141b;
+  --bg:#0f151c;                /* fundo + claro p/ sol */
+  --card:#141b24;              /* cards mais legíveis */
   --glass: rgba(36, 220, 149, 0.06);
   --text:#e9eef7;
-  --muted:#a9b2c3;
+  --muted:#b6c3d4;             /* texto secundário + claro */
   --primary:#ffffff;
-  --primary-ink:#052e1a;
-  --outline:#ffffff0c;
-  --shadow: 0 10px 30px rgb(18, 58, 179);
+  --primary-ink:#082b1a;
+  --outline:#1e2a36;           /* borda neutra (antes translúcida) */
+  --shadow: 0 10px 30px rgba(0,0,0,.35); /* sombra neutra (sem azul) */
   --radius: 18px;
   --radius-sm: 12px;
   --speed: .25s;
@@ -20,9 +20,9 @@ body{
   font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial;
   color: var(--text);
   background:
-    radial-gradient(1200px 600px at 10% -10%, #000000 0, transparent 60%),
-    radial-gradient(1000px 500px at 110% 0%, #000000 0, transparent 60%),
-    linear-gradient(180deg, #060708, #000000);
+    radial-gradient(1200px 600px at 10% -10%, #0b1016 0, transparent 60%),
+    radial-gradient(1000px 500px at 110% 0%, #0b1016 0, transparent 60%),
+    linear-gradient(180deg, #0b1118, #070b10);
   background-color: var(--bg);
 }
 
@@ -36,21 +36,21 @@ body{
 }
 .brand{display:flex; align-items:center; gap:14px}
 .logo {
-  width:44px; 
-  height:44px; 
+  width:44px;
+  height:44px;
   border-radius: 12px;
-  background: linear-gradient(135deg,#000000,#5d5555);
-  display:flex; 
-  align-items:center; 
+  background: linear-gradient(135deg,#0a0d12,#2b3440);
+  display:flex;
+  align-items:center;
   justify-content:center;
   font-size: 39px;
   transition: transform 0.25s ease, box-shadow 0.25s ease;
   cursor: pointer;
-  box-shadow: 0 10px 24px rgb(86, 86, 86);
+  box-shadow: 0 10px 24px rgba(0,0,0,.45);
 }
 .logo:hover {
   transform: scale(1.5);
-  box-shadow: 0 12px 28px rgba(0, 4, 255, 0.4);
+  box-shadow: 0 12px 28px rgba(0,0,0,.55);
 }
 
 .title h1{margin:0; font-size: 20px; letter-spacing:.2px}
@@ -115,16 +115,16 @@ h2{margin: 0 0 14px; font-size: 18px}
 label{display:block; font-weight:600; margin-bottom: 6px; color: var(--muted); letter-spacing:.2px}
 input, select{
   width:100%; padding: 12px 12px;
-  background: #000000; color: var(--text);
-  border: 2px solid #1e00ff; border-radius: var(--radius-sm);
+  background: #0d1218; color: var(--text);
+  border: 2px solid #2a3a4a; border-radius: var(--radius-sm);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
   transition: border var(--speed), box-shadow var(--speed), transform var(--speed);
 }
-input::placeholder{color:#d2d2d2}
-input:hover, select:hover{border-color:#2b3649}
+input::placeholder{color:#b8c2d1}
+input:hover, select:hover{border-color:#0077ff}
 input:focus, select:focus{
   outline: none; border-color: #ffffff;
-  box-shadow: 0 0 0 3px rgba(58,155,122,.25);
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.25); /* foco azul de confiança */
   transform: translateY(-1px);
 }
 
@@ -134,14 +134,14 @@ button{
   transition: transform var(--speed), box-shadow var(--speed), filter var(--speed), background var(--speed), color var(--speed);
 }
 .primary{background: var(--primary); color: var(--primary-ink)}
-.primary:hover{transform: translateY(-1px); box-shadow: 0 16px 30px rgba(74,222,128,.35)}
+.primary:hover{transform: translateY(-1px); box-shadow: 0 16px 30px rgba(31,111,235,.35)}
 .ghost{
   background: transparent; color: var(--text);
-  border: 1px dashed #fff70052; margin: 6px 0 12px;
+  border: 1px dashed rgba(133,183,255,.25); margin: 6px 0 12px;
 }
 .ghost:hover{background: rgba(255,255,255,.03)}
 .outline{
-  background: transparent; color: var(--text); border:1px solid #4c4b4b;
+  background: transparent; color: var(--text); border:1px solid #1d2a3a;
 }
 .outline:hover{background: rgba(255,255,255,.03)}
 
@@ -149,16 +149,16 @@ button{
 .resumo{display:flex; flex-direction:column; gap: 12px}
 .metric{
   display:flex; align-items:center; justify-content:space-between;
-  padding: 12px 14px; border: 1px solid #1e2735; border-radius: var(--radius-sm);
-  background: #0b0f14;
+  padding: 12px 14px; border: 1px solid #223046; border-radius: var(--radius-sm);
+  background: #121821;
   transition: transform var(--speed), box-shadow var(--speed);
 }
-.metric:hover{transform: translateY(-1px); box-shadow: 0 10px 20px rgba(255, 255, 255, 0.256)}
+.metric:hover{transform: translateY(-1px); box-shadow: 0 10px 20px rgba(0,0,0,.35)}
 .metric .lbl{color: var(--muted); font-weight:600}
 .metric .val{font-size: 18px; font-weight:800}
 
 .rules h3{margin: 4px 0 6px; font-size:14px; color: var(--muted)}
-.rules ul{margin:0; padding-left: 18px; color:#aeb8c8}
+.rules ul{margin:0; padding-left: 18px; color:#b9c6d6}
 .rules li{margin: 4px 0}
 
 /* Botão do WhatsApp dentro do Resumo */
@@ -175,11 +175,11 @@ button{
 .suggestions{
   position:absolute;
   z-index: 1000;
-  background: #0b0f14;
-  border: 1px solid #1d2634;
+  background: #0f151c;
+  border: 1px solid #223046;
   border-radius: 12px;
   padding: 6px;
-  box-shadow: 0 10px 24px rgba(255, 0, 0, 0.35);
+  box-shadow: 0 10px 24px rgba(0,0,0,.35);
   display:none;
 }
 .suggestions.open{ display:block; }
@@ -188,14 +188,14 @@ button{
   border-radius:10px; background:transparent; color:#e9eef7; cursor:pointer;
   font-family:inherit; font-size:15px;
 }
-.suggestions__item:hover{ background: rgba(255, 0, 0, 0.04); }
+.suggestions__item:hover{ background: rgba(255,255,255,0.05); }
 .suggestions__item.active { background: rgba(255,255,255,.12) !important; }
 .suggestions__main{font-weight:600}
-.suggestions__sec{font-size:12px; color:#a9b2c3}
+.suggestions__sec{font-size:12px; color:#b6c3d4}
 
 /* Input inválido */
 input.is-invalid, select.is-invalid{
-  border-color:#ff0000 !important;
+  border-color:#FF4D4F !important;
   box-shadow: 0 0 0 3px rgba(239,68,68,.2) !important;
   animation: shake .18s linear 0s 2;
 }
@@ -213,10 +213,10 @@ input.is-invalid, select.is-invalid{
 .add-num-pill-js{
   display:inline-flex; align-items:center; gap:6px;
   padding:6px 10px; border-radius:999px;
-  background:#4400ffe6; color:#cfe3ff; border:1px solid #274165;
+  background:#006ef5; color:#cfe3ff; border:1px solid #274165;
   font-size:12px; cursor:pointer; margin-top:6px;
 }
-.add-num-pill-js:hover{ background:#0f2744; }
+.add-num-pill-js:hover{ background:#0b1d33; }
 
 /* ====== AÇÕES (Calcular) — responsivo sólido ====== */
 .actions{

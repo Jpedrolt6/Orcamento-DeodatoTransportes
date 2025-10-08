@@ -172,7 +172,7 @@ function ensureInfoField(afterInputEl, infoId, placeholder) {
   btn.textContent = 'Adicionar informações';
   btn.style.cssText = `
     margin-top:6px; padding:8px 12px;
-    border-radius:10px; border:1px solid #1d2634;
+    border-radius:10px; border:1px solid #ff9d0039;
     background:transparent; color:#e9eef7;
     cursor:pointer; font-size:12px; font-weight:600;
   `;
