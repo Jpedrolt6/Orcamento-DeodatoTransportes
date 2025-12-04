@@ -370,8 +370,8 @@ function calcularPrecoCarro(kmInt, qtdParadas, pedagio = 0) {
   if (kmInt <= 12) base = 100;
   else if (kmInt <= 19) base = 110;
   else if (kmInt <= 33) base = 130;
-  else if (kmInt <= 69) base = 4.0 * kmInt;
-  else base = 276 + (kmInt - 69) * 4.5;
+  else if (kmInt <= 89) base = 4.0 * kmInt;
+  else base = 276 + (kmInt - 89) * 4.5;
   const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 10;
   const total = base + taxaParadas + (Number(pedagio) || 0);
   return Math.max(0, Math.round(total));
@@ -382,19 +382,19 @@ function tarifaDegrau(kmInt, ate30Valor, pos30PorKm){
   return ate30Valor + pos30PorKm * (k - 30);
 }
 function calcularPrecoFiorino(kmInt, qtdParadas = 0, pedagio = 0){
-  const base = tarifaDegrau(kmInt, 190, 4);
+  const base = tarifaDegrau(kmInt, 200, 4);
   const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 10;
   const total = base + taxaParadas + (Number(pedagio) || 0);
   return Math.max(0, Math.round(total));
 }
 function calcularPrecoHRDucato(kmInt, qtdParadas = 0, pedagio = 0){
-  const base = tarifaDegrau(kmInt, 290, 5);
+  const base = tarifaDegrau(kmInt, 300, 5);
   const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 20;
   const total = base + taxaParadas + (Number(pedagio) || 0);
   return Math.max(0, Math.round(total));
 }
 function calcularPrecoIvecoMaster(kmInt, qtdParadas = 0, pedagio = 0){
-  const base = tarifaDegrau(kmInt, 360, 5);
+  const base = tarifaDegrau(kmInt, 400, 6);
   const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 20;
   const total = base + taxaParadas + (Number(pedagio) || 0);
   return Math.max(0, Math.round(total));
