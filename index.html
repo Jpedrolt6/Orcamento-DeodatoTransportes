@@ -27,19 +27,38 @@
         <h2>Endereços</h2>
 
         <div class="field">
-          <label for="origem">Retirada</label>
-          <input id="origem" type="text" placeholder="Digite o endereço de retirada" autocomplete="off" />
-        </div>
+  <label for="origem">Retirada</label>
 
-        <div id="paradas"></div>
+  <div class="input-clear">
+    <input id="origem" type="text"
+      placeholder="Digite o endereço de retirada"
+      autocomplete="on">
 
-        <button class="ghost" id="btnAddParada" type="button">+ Adicionar parada</button>
+    <button class="clear-btn" type="button" data-target="origem">
+      ✕
+    </button>
+  </div>
+</div>
 
-        <div class="field">
-          <label for="destino">Entrega</label>
-          <input id="destino" type="text" placeholder="Digite o endereço de entrega" autocomplete="off" />
-        </div>
+<div id="paradas"></div>
 
+<button class="ghost" id="btnAddParada" type="button">
+  + Adicionar parada
+</button>
+
+<div class="field">
+  <label for="destino">Entrega</label>
+
+  <div class="input-clear">
+    <input id="destino" type="text"
+      placeholder="Digite o endereço de entrega"
+      autocomplete="on">
+
+    <button class="clear-btn" type="button" data-target="destino">
+      ✕
+    </button>
+  </div>
+</div>
         <div class="row">
           <div class="field small">
             <label for="servico">Serviço</label>
@@ -56,9 +75,9 @@
           <div class="field small" id="motoTipoRow" style="display:none">
             <label for="motoTipo">Tipo (moto)</label>
             <select id="motoTipo">
-              <option value="" selected disabled>Selecione…</option>
+            
               <option value="bau">Baú</option>
-              <option value="food">FOOD (mochila termica)</option>
+            
             </select>
           </div>
         </div>

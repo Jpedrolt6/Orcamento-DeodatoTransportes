@@ -342,6 +342,25 @@ async function placesNewDetails(placeId, language = "pt-BR") {
   return { formatted_address: formatted, geometry: { location: (lat != null && lng != null) ? { lat, lng } : null } };
 }
 
+document.querySelectorAll(".clear-btn").forEach(btn => {
+
+    const input = document.getElementById(btn.dataset.target);
+
+    function atualizar() {
+        btn.style.display = input.value ? "block" : "none";
+    }
+
+    input.addEventListener("input", atualizar);
+
+    btn.addEventListener("click", () => {
+        input.value = "";
+        input.dispatchEvent(new Event("input"));
+        input.focus();
+    });
+
+    atualizar();
+});
+
 // ---------- Regras de preço ----------
 function calcularPrecoMotoBau(kmInt, qtdParadas, pedagio = 0) {
   let base = 0;
@@ -354,17 +373,7 @@ function calcularPrecoMotoBau(kmInt, qtdParadas, pedagio = 0) {
   const total = base + taxaParadas + (Number(pedagio) || 0);
   return Math.max(0, Math.round(total));
 }
-function calcularPrecoMotoFood(kmInt, qtdParadas, pedagio = 0) {
-  let base = 0;
-  if (kmInt <= 5) base = 45;
-  else if (kmInt <= 12) base = 50;
-  else if (kmInt <= 16) base = 55;
-  else if (kmInt <= 80) base = 30 + (2 * kmInt);
-  else base = 190 + (kmInt - 80) * 3;
-  const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 5;
-  const total = base + taxaParadas + (Number(pedagio) || 0);
-  return Math.max(0, Math.round(total));
-}
+
 function calcularPrecoCarro(kmInt, qtdParadas, pedagio = 0) {
   let base = 0;
   if (kmInt <= 12) base = 100;
