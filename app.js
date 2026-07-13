@@ -364,11 +364,29 @@ document.querySelectorAll(".clear-btn").forEach(btn => {
 // ---------- Regras de preço ----------
 function calcularPrecoMotoBau(kmInt, qtdParadas, pedagio = 0) {
   let base = 0;
-  if (kmInt <= 5) base = 40;
-  else if (kmInt <= 12) base = 45;
-  else if (kmInt <= 15) base = 50;
-  else if (kmInt <= 80) base = 20 + (2 * kmInt);
-  else base = 180 + (kmInt - 80) * 3;
+
+  if (kmInt <= 5) {
+    base = 40;
+  } else if (kmInt <= 12) {
+    base = 45;
+  } else if (kmInt <= 15) {
+    base = 50;
+  } else if (kmInt <= 80) {
+    base = 20 + (2 * kmInt);
+  } else {
+    base = 180 + (kmInt - 80) * 3;
+  }
+
+  // Acréscimos para viagens longas
+  if (kmInt >= 700) {
+    base += 400;
+  } else if (kmInt >= 400) {
+    base += 200;
+  }
+
+  // resto do seu código...
+
+  
   const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 5;
   const total = base + taxaParadas + (Number(pedagio) || 0);
   return Math.max(0, Math.round(total));
@@ -381,6 +399,13 @@ function calcularPrecoCarro(kmInt, qtdParadas, pedagio = 0) {
   else if (kmInt <= 33) base = 130;
   else if (kmInt <= 89) base = 4.0 * kmInt;
   else base = 276 + (kmInt - 89) * 4.5;
+
+    // Acréscimos para viagens longas
+  if (kmInt >= 800) {
+    base += 500;
+  } else if (kmInt >= 400) {
+    base += 300; 
+  }
   const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 10;
   const total = base + taxaParadas + (Number(pedagio) || 0);
   return Math.max(0, Math.round(total));
