@@ -108,7 +108,7 @@ var viewUrl = SHORT_BASE + encodeURIComponent(id);
 const predCache    = new Map();
 const detailsCache = new Map();
 
-// ===== Flag do último orçamento (para limpar endereços ao trocar Baú/Food) =====
+// ===== Flag do último orçamento (para limpar endereços ao trocar o tipo de veículo) =====
 let lastQuote = { hasQuote: false, servico: null, motoTipo: null };
 
 // ===== Utils =====
@@ -171,10 +171,10 @@ function ensureInfoField(afterInputEl, infoId, placeholder) {
   btn.setAttribute('aria-controls', infoId);
   btn.textContent = 'Adicionar informações';
   btn.style.cssText = `
-    margin-top:6px; padding:8px 12px;
-    border-radius:10px; border:1px solid #ff9d0039;
-    background:transparent; color:#e9eef7;
-    cursor:pointer; font-size:12px; font-weight:600;
+    margin-top:6px; padding:6px 0;
+    border:0;
+    background:transparent; color:#ff5a00;
+    cursor:pointer; font-size:11px; font-weight:700;
   `;
 
   const ta = makeLinedTextarea(infoId, placeholder);
@@ -187,7 +187,8 @@ function ensureInfoField(afterInputEl, infoId, placeholder) {
     if (!opened) setTimeout(() => ta.focus(), 0);
   });
 
-  afterInputEl.insertAdjacentElement('afterend', btn);
+  const anchor = afterInputEl.closest('.input-clear') || afterInputEl;
+  anchor.insertAdjacentElement('afterend', btn);
   btn.insertAdjacentElement('afterend', ta);
 }
 
@@ -252,114 +253,127 @@ const Favorites = {
 };
 
 // ---------------------------------------------------------------------------
-//                        Places API (New) – REST
+//              Places (New) via Maps JavaScript API — sem REST/CORS
 // ---------------------------------------------------------------------------
-const PLACES_API_KEY = "AIzaSyAhGvrR_Gp4e0ROB1BInjNBSUQdHEh6ews";
-const PLACES_BASE = "https://places.googleapis.com/v1";
-const SP_CENTER = { latitude: -23.55052, longitude: -46.633308 };
-const SP_BIAS   = { circle: { center: SP_CENTER, radius: 50000 } };
+// IMPORTANTE: o navegador NÃO chama diretamente places.googleapis.com.
+// O autocomplete e os detalhes passam pela biblioteca oficial do Maps JS,
+// que é própria para uso no front-end e respeita a chave carregada no SDK.
+const SP_CENTER = { lat: -23.55052, lng: -46.633308 };
+const SP_BIAS   = { center: SP_CENTER, radius: 50000 };
 
-const FM_AUTOCOMPLETE = [
-  "suggestions.placePrediction.placeId",
-  "suggestions.placePrediction.text",
-  "suggestions.structuredFormat.mainText",
-  "suggestions.structuredFormat.secondaryText"
-].join(",");
-const FM_DETAILS = ["id","displayName","formattedAddress","location"].join(",");
-const FM_SEARCH  = ["places.id","places.displayName","places.formattedAddress","places.location"].join(",");
+let _placesLibPromise = null;
+function getPlacesLibrary() {
+  if (!_placesLibPromise) {
+    _placesLibPromise = google.maps.importLibrary("places");
+  }
+  return _placesLibPromise;
+}
 
 function newSessionToken() {
-  if (window.crypto?.randomUUID) return crypto.randomUUID();
-  return "tok-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+  try {
+    const Token = window.google?.maps?.places?.AutocompleteSessionToken;
+    return Token ? new Token() : null;
+  } catch {
+    return null;
+  }
 }
-function newHeaders(fieldMask, sessionToken) {
-  const h = { "Content-Type": "application/json", "X-Goog-Api-Key": PLACES_API_KEY, "X-Goog-FieldMask": fieldMask };
-  if (sessionToken) h["X-Goog-Session-Token"] = sessionToken;
-  return h;
+
+function textOf(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  try {
+    if (typeof value.toString === "function") return value.toString();
+  } catch {}
+  return "";
 }
+
 function normalizeNewSuggestions(resp) {
   const out = [];
   const list = resp?.suggestions || [];
-  for (const s of list) {
-    const p  = s.placePrediction || {};
-    const sf = s.structuredFormat || {};
-    const main = typeof sf.mainText === "object" ? (sf.mainText?.text || "") : (sf.mainText || "");
-    const secondary = typeof sf.secondaryText === "object" ? (sf.secondaryText?.text || "") : (sf.secondaryText || "");
-    const description = [main, secondary].filter(Boolean).join(", ") || (p.text?.text || p.text || "");
-    if (!p.placeId) continue;
-    out.push({ description, structured_formatting: { main_text: main || description, secondary_text: secondary || "" }, place_id: p.placeId });
+
+  for (const suggestion of list) {
+    const p = suggestion?.placePrediction;
+    if (!p?.placeId) continue;
+
+    const main = textOf(p.mainText) || textOf(p.text);
+    const secondary = textOf(p.secondaryText);
+    const description = textOf(p.text) || [main, secondary].filter(Boolean).join(", ");
+
+    out.push({
+      description,
+      structured_formatting: {
+        main_text: main || description,
+        secondary_text: secondary || ""
+      },
+      place_id: p.placeId
+    });
   }
+
   return out;
 }
-function normalizeSearchToSuggestions(resp) {
-  const arr = resp?.places || [];
-  return arr.slice(0, 10).map((pl) => {
-    const main = pl?.displayName?.text || "";
-    const secondary = pl?.formattedAddress || "";
-    return {
-      description: [main, secondary].filter(Boolean).join(", "),
-      structured_formatting: { main_text: main || secondary, secondary_text: secondary ? (main ? secondary : "") : "" },
-      place_id: pl?.id || ""
-    };
-  }).filter(x => x.place_id);
-}
 
-let _acAborter = null;
 async function placesNewAutocomplete({ input, sessionToken, region = "br", language = "pt-BR" }) {
   try {
-    if (_acAborter) _acAborter.abort();
-    _acAborter = new AbortController();
-    const body = { input, languageCode: language, regionCode: region, includeQueryPredictions: true, locationBias: SP_BIAS };
-    const res = await fetch(`${PLACES_BASE}/places:autocomplete`, {
-      method: "POST", headers: newHeaders(FM_AUTOCOMPLETE, sessionToken), body: JSON.stringify(body), signal: _acAborter.signal
-    });
-    if (!res.ok) throw new Error("Autocomplete falhou: " + res.status);
-    return await res.json();
-  } catch (e) {
-    if (e.name === "AbortError") return { suggestions: [] };
+    const { AutocompleteSuggestion } = await getPlacesLibrary();
+
+    const request = {
+      input,
+      language,
+      region,
+      includedRegionCodes: ["br"],
+      locationBias: SP_BIAS
+    };
+    if (sessionToken) request.sessionToken = sessionToken;
+
+    return await AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
+  } catch (error) {
+    console.error("Deodato: falha no autocomplete do Google Places:", error);
     return { suggestions: [] };
   }
 }
-async function placesNewSearchText(textQuery, language = "pt-BR") {
-  try {
-    const res = await fetch(`${PLACES_BASE}/places:searchText`, {
-      method: "POST", headers: newHeaders(FM_SEARCH), body: JSON.stringify({ textQuery, languageCode: language, locationBias: SP_BIAS })
-    });
-    if (!res.ok) throw new Error("SearchText falhou: " + res.status);
-    return await res.json();
-  } catch {
-    return { places: [] };
-  }
-}
+
 async function placesNewDetails(placeId, language = "pt-BR") {
-  const url = `${PLACES_BASE}/places/${encodeURIComponent(placeId)}?languageCode=${encodeURIComponent(language)}`;
-  const res = await fetch(url, { headers: newHeaders(FM_DETAILS) });
-  if (!res.ok) throw new Error("Details falhou: " + res.status);
-  const data = await res.json();
-  const lat = data?.location?.latitude;
-  const lng = data?.location?.longitude;
-  const formatted = data?.formattedAddress || data?.displayName?.text || "";
-  return { formatted_address: formatted, geometry: { location: (lat != null && lng != null) ? { lat, lng } : null } };
+  const { Place } = await getPlacesLibrary();
+  const place = new Place({ id: placeId, requestedLanguage: language });
+  await place.fetchFields({
+    fields: ["displayName", "formattedAddress", "location", "googleMapsURI"]
+  });
+
+  const loc = place.location;
+  const lat = typeof loc?.lat === "function" ? loc.lat() : loc?.lat;
+  const lng = typeof loc?.lng === "function" ? loc.lng() : loc?.lng;
+
+  return {
+    formatted_address: place.formattedAddress || place.displayName || "",
+    geometry: {
+      location: (lat != null && lng != null) ? { lat, lng } : null
+    },
+    google_maps_uri: place.googleMapsURI || ""
+  };
 }
 
-document.querySelectorAll(".clear-btn").forEach(btn => {
+function setupClearButton(btn) {
+  if (!btn || btn.dataset.clearReady === "1") return;
+  const input = document.getElementById(btn.dataset.target);
+  if (!input) return;
 
-    const input = document.getElementById(btn.dataset.target);
+  btn.dataset.clearReady = "1";
 
-    function atualizar() {
-        btn.style.display = input.value ? "block" : "none";
-    }
+  function atualizar() {
+    btn.style.display = input.value ? "grid" : "none";
+  }
 
-    input.addEventListener("input", atualizar);
+  input.addEventListener("input", atualizar);
+  btn.addEventListener("click", () => {
+    input.value = "";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.focus();
+  });
 
-    btn.addEventListener("click", () => {
-        input.value = "";
-        input.dispatchEvent(new Event("input"));
-        input.focus();
-    });
+  atualizar();
+}
 
-    atualizar();
-});
+document.querySelectorAll(".clear-btn").forEach(setupClearButton);
 
 // ---------- Regras de preço ----------
 function calcularPrecoMotoBau(kmInt, qtdParadas, pedagio = 0) {
@@ -432,26 +446,6 @@ function calcularPrecoIvecoMaster(kmInt, qtdParadas = 0, pedagio = 0){
   const taxaParadas = Math.max(0, Number(qtdParadas) || 0) * 20;
   const total = base + taxaParadas + (Number(pedagio) || 0);
   return Math.max(0, Math.round(total));
-}
-
-// ---------- Observação FOOD ----------
-function setFoodInfo(show) {
-  const resumo = document.getElementById('resumo');
-  if (!resumo) return;
-  let info = document.getElementById('foodInfo');
-  if (!info) {
-    info = document.createElement('div');
-    info.id = 'foodInfo';
-    info.setAttribute('aria-live', 'polite');
-    info.style.cssText = 'padding:12px 14px;border:1px solid #2a3342;background:#0d131b;border-radius:12px;color:#cfe3ff;font-size:13px;line-height:1.35;margin-top:6px;';
-    info.innerHTML = `
-      <div style="font-weight:700; margin-bottom:6px;">Observação — FOOD</div>
-      <div>Serviços de alimentação têm valores diferenciados devido à espera em restaurantes e ao maior risco de avarias no transporte em mochila térmica.</div>
-    `;
-    const btnLimpar = document.getElementById('btnLimpar');
-    resumo.insertBefore(info, btnLimpar);
-  }
-  info.style.display = show ? '' : 'none';
 }
 
 // ---------- Monta mensagem WhatsApp ----------
@@ -662,7 +656,21 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
         if (fresh) { finish(fresh); return; }
 
         try {
-          const place = await placesNewDetails(p.place_id, "pt-BR");
+          let place = null;
+
+          // 1) Places API (New)
+          try { place = await placesNewDetails(p.place_id, "pt-BR"); } catch {}
+
+          // 2) Fallback pelo Geocoder do Maps JS
+          if (!place?.geometry?.location) {
+            place = await geocodeByPlaceId(p.place_id);
+          }
+
+          // 3) Último fallback: geocodifica o texto exibido
+          if (!place?.geometry?.location && p.description) {
+            place = await geocodeByText(p.description);
+          }
+
           if (place?.geometry?.location) {
             detailsCache.set(p.place_id, { ts: Date.now(), place });
             finish(place);
@@ -699,12 +707,6 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
         try {
           const data = await placesNewAutocomplete({ input: q, sessionToken, region: COUNTRY_CODE, language: "pt-BR" });
           norm = normalizeNewSuggestions(data);
-          if (!norm.length || norm.length < MIN_SUGGESTIONS) {
-            const st = await placesNewSearchText(q, "pt-BR");
-            const extra = normalizeSearchToSuggestions(st);
-            const seen = new Set(norm.map(x => x.place_id));
-            for (const e of extra) if (!seen.has(e.place_id)) norm.push(e);
-          }
           predCache.set(q, { ts: Date.now(), predictions: norm });
         } catch { norm = []; }
       }
@@ -774,81 +776,49 @@ function setupInputAutocomplete({ inputEl, onPlaceChosen }) {
       const idx = Number(inputEl.id.split('-')[1] || 0);
       paradasPlaces[idx] = null;
     }
+    if (lastQuote.hasQuote) invalidateQuoteUI();
   });
   inputEl.addEventListener("blur", () => setTimeout(hideList, 150));
 }
 
-// ===================== Injeta seletor “Tipo de Moto” =====================
+// ===================== Estado fixo da moto: somente Baú =====================
 function ensureMotoTipoControl() {
   if (document.getElementById('motoTipo')) return;
-  const row = document.querySelector('.row'); if (!row) return;
-  const field = document.createElement("div");
-  field.className = "field small";
-  field.id = "motoTipoRow";
-  field.style.display = "none";
-  field.innerHTML = `
-    <label for="motoTipo">Tipo de Moto</label>
-    <select id="motoTipo">
-      <option value="">Selecione…</option>
-      <option value="bau">Baú</option>
-      <option value="food">FOOD (mochila térmica)</option>
-    </select>
-  `;
-  const servField = document.getElementById('servico')?.closest('.field');
-  if (servField && servField.parentElement === row) servField.after(field); else row.appendChild(field);
+  const input = document.createElement('input');
+  input.type = 'hidden';
+  input.id = 'motoTipo';
+  input.value = 'bau';
+  document.body.appendChild(input);
 }
 
 // ===================== UI da Otimização (botão e container) =====================
 function ensureOptimizeUI() {
   const actions = document.querySelector(".actions");
-  if (actions) {
-    const sameTextBtns = Array.from(actions.querySelectorAll("button")).filter(b => (b.textContent||"").trim().toLowerCase() === "rota otimizada");
-    sameTextBtns.slice(1).forEach(b => b.remove());
-    let btn = sameTextBtns[0] || document.getElementById("btnOtimizar");
-    if (!btn) {
-      btn = document.createElement("button");
-      btn.type = "button";
-      btn.id = "btnOtimizar";
-      btn.className = "outline";
-      btn.textContent = "Rota Otimizada";
-      btn.style.marginLeft = "8px";
-      actions.appendChild(btn);
-    } else {
-      btn.id = "btnOtimizar";
-    }
+  let btn = document.getElementById("btnOtimizar");
 
-    let sub = document.getElementById("otSub");
-    if (!sub) {
-      sub = document.createElement("div");
-      sub.id = "otSub";
-      sub.textContent = "ROTA OTIMIZADA: Ideal para corridas com bastantes paradas.";
-      sub.style.cssText = "display:block;margin:4px 0 0 8px;font-size:12px;color:#a9b2c3;font-weight:600;";
-      actions.appendChild(sub);
-    }
+  // Fallback para versões antigas do HTML: cria o botão se ele não existir.
+  if (!btn && actions) {
+    btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = "btnOtimizar";
+    btn.className = "optimize-btn";
+    btn.innerHTML = '<span aria-hidden="true">↻</span> Rota otimizada';
+    actions.appendChild(btn);
   }
+
+  // Fallback para versões antigas do HTML: cria o painel de resultado.
   if (!document.getElementById("otimizacaoResumo")) {
-    const resumoBox = document.getElementById("resumo");
-    if (resumoBox) {
+    const anchor = document.querySelector(".optimize-note") || actions;
+    if (anchor?.parentNode) {
       const box = document.createElement("div");
       box.id = "otimizacaoResumo";
-      box.className = "glass";
-      box.style.cssText = "display:none;margin-top:12px;padding:12px;border-radius:12px;border:1px solid #1d2634;background:#0b0f14;color:#e9eef7";
-      resumoBox.appendChild(box);
+      box.className = "optimization-result";
+      box.setAttribute("aria-live", "polite");
+      anchor.insertAdjacentElement("afterend", box);
     }
   }
-  if (!document.getElementById("resumoLinkMaps")) {
-    const resumoBox = document.getElementById("resumo");
-    if (resumoBox) {
-      const link = document.createElement("a");
-      link.id = "resumoLinkMaps";
-      link.href = "#";
-      link.target = "_blank";
-      link.rel = "noopener";
-      link.textContent = "Abrir no Google Maps";
-      link.style.cssText = "display:none;margin:10px 0 0;text-decoration:underline;color:#85b7ff;font-weight:600;";
-      resumoBox.insertBefore(link, document.getElementById("btnWhats"));
-    }
-  }
+
+  atualizarVisibilidadeOtimizacao();
 }
 
 // ===================== Botão Voltar ao Topo =====================
@@ -875,6 +845,18 @@ function ensureBackToTopUI(){
   };
   window.addEventListener('scroll', onScroll, { passive:true });
   onScroll();
+}
+
+// ===================== Visibilidade da rota otimizada =====================
+function atualizarVisibilidadeOtimizacao() {
+  const temParada = document.querySelectorAll("#paradas .field").length > 0;
+  const btn = document.getElementById("btnOtimizar");
+  const note = document.getElementById("optimizeNote") || document.querySelector(".optimize-note");
+  const actions = document.getElementById("routeActions") || document.querySelector(".route-actions");
+
+  if (btn) btn.hidden = !temParada;
+  if (note) note.hidden = !temParada;
+  if (actions) actions.classList.toggle("has-optimization", temParada);
 }
 
 // ===================== Autocomplete nos campos =====================
@@ -905,14 +887,22 @@ function adicionarParadaInput() {
   wrap.className = "field";
   wrap.innerHTML = `
     <label for="parada-${idx}">Parada ${idx + 1}</label>
-    <input id="parada-${idx}" type="text" placeholder="Digite o endereço da parada" autocomplete="off" />
+    <div class="input-clear input-with-icon">
+      <span class="field-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.05 6-11a6 6 0 1 0-12 0c0 5.95 6 11 6 11Z"/><circle cx="12" cy="10" r="2.3"/></svg></span>
+      <input id="parada-${idx}" type="text" placeholder="Digite o endereço da parada" autocomplete="off" />
+      <button class="clear-btn" type="button" data-target="parada-${idx}" aria-label="Limpar parada ${idx + 1}"><span aria-hidden="true">×</span></button>
+    </div>
   `;
   container.appendChild(wrap);
 
+  // A partir da primeira parada, libera a opção de otimizar a sequência.
+  atualizarVisibilidadeOtimizacao();
+
   const input = document.getElementById(`parada-${idx}`);
   bloquearEnter(input);
+  setupClearButton(wrap.querySelector('.clear-btn'));
 
-  ensureInfoField(wrap.querySelector("input"), `paradaInfo-${idx}`, "Adicionar informações");
+  ensureInfoField(input, `paradaInfo-${idx}`, "Adicionar informações");
 
   setupInputAutocomplete({ inputEl: input, onPlaceChosen: (place) => { paradasPlaces[idx] = place; } });
 }
@@ -921,7 +911,7 @@ function adicionarParadaInput() {
 function hideRules() {
   const rules = document.querySelector('.rules'); if (!rules) return;
   const ul = rules.querySelector('ul'); if (ul) ul.innerHTML = "";
-  rules.style.display = 'none'; setFoodInfo(false);
+  rules.style.display = 'none';
 }
 function showRules(htmlList) {
   const rules = document.querySelector('.rules'); if (!rules) return;
@@ -929,38 +919,26 @@ function showRules(htmlList) {
   ul.innerHTML = htmlList; rules.style.display = '';
 }
 function updateRules() {
-  const servicoSel  = document.getElementById("servico");
-  const motoTipoSel = document.getElementById("motoTipo");
-  const motoTipoRow = document.getElementById("motoTipoRow");
-  const servico = servicoSel?.value || "";
+  const servico = document.getElementById("servico")?.value || "";
 
-  if (motoTipoRow) motoTipoRow.style.display = (servico === "moto") ? "" : "none";
-
+  if (servico === "moto") {
+    showRules(`<li>Baú máx.: 44 × 42 × 32 cm</li><li>Peso máx.: 20 kg</li><li>Ideal para documentos, eletrônicos, roupas e pequenas encomendas</li><li>Espera: R$ 0,60/min após 15 min</li>`);
+    return;
+  }
   if (servico === "carro") {
     showRules(`<li>Ideal para caixas pequenas e médias, acima da capacidade da moto</li><li>Espera: R$ 0,70/min após 20 min</li>`);
-    setFoodInfo(false); return;
-  }
-  if (servico === "moto") {
-    const tipo = motoTipoSel?.value || "";
-    if (tipo === "food") {
-      showRules(`<li>Mochila térmica</li><li>Ideal para entregas de alimentos</li><li>Peso máx.: 20 kg</li><li>Espera: R$ 0,60/min após 20 min</li>`);
-      setFoodInfo(true);
-    } else if (tipo === "bau") {
-      showRules(`<li>Baú máx.: 44 × 42 × 32 cm</li><li>Peso máx.: 20 kg</li><li>Ideal para documentos, eletrônicos, roupas e pequenas encomendas</li><li>Espera: R$ 0,60/min após 15 min</li>`);
-      setFoodInfo(false);
-    } else { hideRules(); }
     return;
   }
   if (servico === "fiorino") {
-    showRules(`<li>Ideal para cargas fracionadas de medio porte</li><li>Melhor custo-benefício para cargas de até 600 kg</li><li>Dimensões máx.: 1,35 m alt. × 1,10 m larg. × 1,85 m comp.</li><li>Peso máx.: 600 kg</li><li>Picapes: Ideal para cargas alongadas (ex.: tubos, barras, perfis metálicos)</li><li> Espera: R$ 0,80/min após 20 min</li>`);
+    showRules(`<li>Ideal para cargas fracionadas de médio porte</li><li>Melhor custo-benefício para cargas de até 600 kg</li><li>Dimensões máx.: 1,35 m alt. × 1,10 m larg. × 1,85 m comp.</li><li>Peso máx.: 600 kg</li><li>Espera: R$ 0,80/min após 20 min</li>`);
     return;
   }
   if (servico === "hr_ducato") {
-    showRules(`<li>Pequeno caminhão / Ideal para cargas volumosas em quantidade intermediária</li><li>Ideal para mudanças pequenas e cargas maiores</li><li>Dimensões máx.: 1,90 m alt. × 1,40 m larg. × 2,50 m comp.</li><li>Peso máx.: 1500 kg</li><li> Espera: R$ 1,20/min após 30 min</li>`);
+    showRules(`<li>Pequeno caminhão / ideal para cargas volumosas em quantidade intermediária</li><li>Dimensões máx.: 1,90 m alt. × 1,40 m larg. × 2,50 m comp.</li><li>Peso máx.: 1500 kg</li><li>Espera: R$ 1,20/min após 30 min</li>`);
     return;
   }
   if (servico === "iveco_master") {
-    showRules(`<li>Ideal para operações maiores em centros urbanos com restrição de caminhões</li><li>Transporte de cargas paletizadas</li><li>Capacidade volumétrica 10-15 m³</li><li>Peso max.: 2300 kg</li><li> Espera: R$ 1,20/min após 30 min</li>`);
+    showRules(`<li>Ideal para operações maiores em centros urbanos com restrição de caminhões</li><li>Capacidade volumétrica 10-15 m³</li><li>Peso máx.: 2300 kg</li><li>Espera: R$ 1,20/min após 30 min</li>`);
     return;
   }
   hideRules();
@@ -969,14 +947,22 @@ function updateRules() {
 // ===================== Botão Whats — helpers =====================
 function getBtnWhats() { return document.getElementById("btnWhats"); }
 function esconderWhats() {
-  const btnWhats = getBtnWhats(); if (!btnWhats) return;
-  btnWhats.classList.add("hide"); btnWhats.classList.remove("show","wpp-attention");
-  btnWhats.setAttribute("aria-disabled","true"); btnWhats.setAttribute("tabindex","-1"); btnWhats.href = "#";
+  const btnWhats = getBtnWhats();
+  const btnLimpar = document.getElementById("btnLimpar");
+  if (btnWhats) {
+    btnWhats.classList.add("hide"); btnWhats.classList.remove("show","wpp-attention");
+    btnWhats.setAttribute("aria-disabled","true"); btnWhats.setAttribute("tabindex","-1"); btnWhats.href = "#";
+  }
+  btnLimpar?.classList.add("hide");
 }
 function mostrarWhats() {
-  const btnWhats = getBtnWhats(); if (!btnWhats) return;
-  btnWhats.classList.remove("hide"); btnWhats.classList.add("show");
-  btnWhats.setAttribute("aria-disabled","false"); btnWhats.removeAttribute("tabindex");
+  const btnWhats = getBtnWhats();
+  const btnLimpar = document.getElementById("btnLimpar");
+  if (btnWhats) {
+    btnWhats.classList.remove("hide"); btnWhats.classList.add("show");
+    btnWhats.setAttribute("aria-disabled","false"); btnWhats.removeAttribute("tabindex");
+  }
+  btnLimpar?.classList.remove("hide");
 }
 function scrollToWhats() {
   const btnWhats = getBtnWhats(); if (!btnWhats) return;
@@ -1009,16 +995,13 @@ function pulseWhats() {
   btnWhats.classList.add('wpp-attention');
   try { if (navigator.vibrate) navigator.vibrate([80,60,80,60,120,60,80]); } catch {}
 }
-document.addEventListener('pointerdown', (ev) => {
-  const btn = ev.target?.closest?.('#btnWhats'); if (!btn) return;
-  try { if (navigator.vibrate) navigator.vibrate([40,40,80]); } catch {}
-}, { passive: true });
 
 // ===== scroll para resultados (KM/Valor) =====
 function scrollToMetrics(){
-  const target = document.getElementById('mValor') || document.getElementById('mDist') || document.getElementById('resumo');
+  if (window.innerWidth > 820) return;
+  const target = document.getElementById('summaryTitle') || document.getElementById('mValor') || document.getElementById('resumo');
   if (!target) return;
-  const y = target.getBoundingClientRect().top + window.scrollY - 100;
+  const y = target.getBoundingClientRect().top + window.scrollY - 82;
   window.scrollTo({ top: y, behavior:'smooth' });
 }
 
@@ -1051,6 +1034,7 @@ function limparEnderecosInputs() {
   const mValorEl = document.getElementById("mValor");
   if (mDistEl)  mDistEl.textContent = "—";
   if (mValorEl) mValorEl.textContent = "—";
+  resetVisualSummary();
 
   esconderWhats();
 
@@ -1100,11 +1084,91 @@ function formatKmDisplay(totalMeters, locale = 'pt') {
   return (locale === 'en') ? fixed : fixed.replace('.', ',');
 }
 
+// ===================== UI do novo layout =====================
+function initVehicleCards() {
+  const select = document.getElementById("servico");
+  const buttons = Array.from(document.querySelectorAll(".vehicle-option[data-service]"));
+  if (!select || !buttons.length) return;
+
+  const sync = () => {
+    buttons.forEach(btn => {
+      const active = btn.dataset.service === select.value;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-pressed", String(active));
+    });
+  };
+
+  if (select.dataset.cardsBound === "1") { sync(); return; }
+  select.dataset.cardsBound = "1";
+
+  buttons.forEach(btn => {
+    btn.addEventListener("click", () => {
+      select.value = btn.dataset.service || "moto";
+      const motoTipo = document.getElementById("motoTipo");
+      if (motoTipo) motoTipo.value = "bau";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      sync();
+    });
+  });
+  select.addEventListener("change", sync);
+  sync();
+}
+
+function formatDuration(totalSeconds) {
+  const secs = Math.max(0, Number(totalSeconds) || 0);
+  if (!secs) return "—";
+  const mins = Math.max(1, Math.round(secs / 60));
+  if (mins < 60) return `${mins} min`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m ? `${h}h ${String(m).padStart(2, "0")}min` : `${h}h`;
+}
+
+function splitAddressForSummary(address) {
+  const text = String(address || "").trim();
+  if (!text) return { main: "", sub: "" };
+  const parts = text.split(",").map(x => x.trim()).filter(Boolean);
+  return {
+    main: parts.slice(0, 2).join(", ") || text,
+    sub: parts.slice(2).join(", ")
+  };
+}
+
+function setSummaryAddress(prefix, address, fallbackMain, fallbackSub) {
+  const mainEl = document.getElementById(prefix);
+  const subEl = document.getElementById(prefix + "Sub");
+  const parts = splitAddressForSummary(address);
+  if (mainEl) mainEl.textContent = parts.main || fallbackMain;
+  if (subEl) subEl.textContent = parts.sub || fallbackSub;
+}
+
+function resetVisualSummary() {
+  const prazo = document.getElementById("mPrazo");
+  if (prazo) prazo.textContent = "—";
+  setSummaryAddress("summaryOrigin", "", "Informe a retirada", "A rota aparecerá aqui");
+  setSummaryAddress("summaryDestination", "", "Informe a entrega", "Depois, clique em calcular rota");
+}
+
+function invalidateQuoteUI() {
+  const dist = document.getElementById("mDist");
+  const valor = document.getElementById("mValor");
+  const cupomCard = document.getElementById("resumoCupomCard");
+  if (dist) dist.textContent = "—";
+  if (valor) valor.textContent = "—";
+  if (cupomCard) cupomCard.style.display = "none";
+  window.__preTotal = 0;
+  window.__preTotalView = 0;
+  window.__finalView = 0;
+  window.__descontoView = 0;
+  resetVisualSummary();
+  esconderWhats();
+  lastQuote = { hasQuote: false, servico: null, motoTipo: null };
+}
+
 // ===================== Cálculo e UI =====================
 function configurarEventos() {
   ensureMotoTipoControl();
   ensureOptimizeUI();
-
   const btnCalcular = document.getElementById("btnCalcular");
   const btnWhats    = document.getElementById("btnWhats");
   const btnLimpar   = document.getElementById("btnLimpar");
@@ -1119,6 +1183,7 @@ function configurarEventos() {
   if (servicoSel) servicoSel.addEventListener("change", () => {
     updateRules();
     if (servicoSel.value !== "moto") clearInvalid(document.getElementById("motoTipo"));
+    if (lastQuote.hasQuote) invalidateQuoteUI();
   });
 
   if (motoTipoSel) {
@@ -1133,7 +1198,7 @@ function configurarEventos() {
   }
 
   btnOtimizar?.addEventListener("click", async () => {
-    try { await otimizarRotaComGoogle(); } catch(e) { console.error(e); }
+    try { await otimizarRotaComGoogle(); } catch (e) { console.error(e); }
   });
 
   btnWhats?.addEventListener("click", (e)=>{ if (btnWhats.getAttribute("aria-disabled") === "true") e.preventDefault(); });
@@ -1144,7 +1209,7 @@ function configurarEventos() {
     const motoTipoSel  = document.getElementById("motoTipo");
     if (origemInput) origemInput.value = "";
     if (destinoInput) destinoInput.value = "";
-    if (motoTipoSel) motoTipoSel.selectedIndex = 0;
+    if (motoTipoSel) motoTipoSel.value = "bau";
 
     const origemInfo = document.getElementById("origemInfo");
     const destinoInfo = document.getElementById("destinoInfo");
@@ -1159,6 +1224,10 @@ function configurarEventos() {
 
     if (mDistEl)  mDistEl.textContent  = "—";
     if (mValorEl) mValorEl.textContent = "—";
+    resetVisualSummary();
+    window.__preTotal = 0;
+    const cupomCard = document.getElementById("resumoCupomCard");
+    if (cupomCard) cupomCard.style.display = "none";
 
     document.querySelectorAll(".add-num-pill-js").forEach(el => el.remove());
 
@@ -1186,7 +1255,7 @@ async function calcularNormal(e){
   const tipoMoto = document.getElementById("motoTipo")?.value || "";
 
   if (servico === "moto" && !tipoMoto) {
-    markInvalid(document.getElementById("motoTipo"), "Selecione Baú ou FOOD.");
+    markInvalid(document.getElementById("motoTipo"), "Selecione o tipo de veículo.");
     mDistEl && (mDistEl.textContent  = "—");
     mValorEl && (mValorEl.textContent = "—");
     esconderWhats();
@@ -1265,7 +1334,7 @@ async function calcularNormal(e){
   const origemLoc = points[0].geometry.location;
   const destinoLoc = points[points.length - 1].geometry.location;
 
-  const finalizarComKm = (kmInt, totalMeters) => finalizarOrcamentoComKm(kmInt, paradasValidas, servico, totalMeters);
+  const finalizarComKm = (kmInt, totalMeters, totalSeconds) => finalizarOrcamentoComKm(kmInt, paradasValidas, servico, totalMeters, totalSeconds);
 
   if (google.maps?.DirectionsService) {
     const dirSvc = new google.maps.DirectionsService();
@@ -1288,14 +1357,14 @@ async function calcularNormal(e){
       }
 
       const kmInt = Math.round(bestMeters / 1000);
-      finalizarComKm(kmInt, bestMeters);
+      finalizarComKm(kmInt, bestMeters, bestSecs);
     });
   } else {
     esconderWhats();
   }
 }
 
-async function finalizarOrcamentoComKm(kmInt, paradasValidas, servico, totalMeters){
+async function finalizarOrcamentoComKm(kmInt, paradasValidas, servico, totalMeters, totalSeconds){
   window.__osShortUrl = "";
 
   const tipo    = document.getElementById("motoTipo")?.value || "";
@@ -1304,27 +1373,28 @@ async function finalizarOrcamentoComKm(kmInt, paradasValidas, servico, totalMete
 
   const mDistEl  = document.getElementById("mDist");
   const mValorEl = document.getElementById("mValor");
+  const mPrazoEl = document.getElementById("mPrazo");
 
   let valor = 0, servicoTxt = "", extraObs = "";
 
-  if (servico === "carro") { valor = calcularPrecoCarro(kmInt, paradasValidas.length, pedagioVal); servicoTxt = "*_Carro_*"; setFoodInfo(false); }
-  else if (servico === "moto") {
-    if (tipo === "food") { valor = calcularPrecoMotoFood(kmInt, paradasValidas.length, pedagioVal); servicoTxt = "*_Moto — (Somente mochila térmica)_*"; setFoodInfo(true); }
-    else { valor = calcularPrecoMotoBau(kmInt, paradasValidas.length, pedagioVal); servicoTxt = "*_Moto — Baú_*"; setFoodInfo(false); }
-  } else if (servico === "fiorino") { valor = calcularPrecoFiorino(kmInt, paradasValidas.length, pedagioVal); servicoTxt = "*_Fiorino_*"; }
+  if (servico === "carro") { valor = calcularPrecoCarro(kmInt, paradasValidas.length, pedagioVal); servicoTxt = "*_Carro_*"; }
+  else if (servico === "moto") { valor = calcularPrecoMotoBau(kmInt, paradasValidas.length, pedagioVal); servicoTxt = "*_Moto — Baú_*"; } else if (servico === "fiorino") { valor = calcularPrecoFiorino(kmInt, paradasValidas.length, pedagioVal); servicoTxt = "*_Fiorino_*"; }
   else if (servico === "hr_ducato") { valor = calcularPrecoHRDucato(kmInt, paradasValidas.length, pedagioVal); servicoTxt = "*_HR / Ducato_*"; }
   else if (servico === "iveco_master") { valor = calcularPrecoIvecoMaster(kmInt, paradasValidas.length, pedagioVal); servicoTxt = "*_Iveco / Master_*"; }
 
   const kmDisplay = formatKmDisplay(totalMeters != null ? totalMeters : (kmInt * 1000));
 
-  if (mDistEl)  mDistEl.textContent  = kmDisplay;
+  if (mDistEl)  mDistEl.textContent  = `${kmDisplay} km`;
   if (mValorEl) mValorEl.textContent = fmtBRL(valor);
+  if (mPrazoEl) mPrazoEl.textContent = formatDuration(totalSeconds);
 
   window.__preTotal = valor;
-  let cup = null;
-  try { cup = DeodatoCoupon.apply(); } catch {}
-
-  const valorFinal = (cup && cup.ok) ? cup.final : valor;
+  // Cupons foram removidos da interface. Mantemos o motor antigo no arquivo apenas
+  // para compatibilidade, mas o orçamento atual usa diretamente o valor calculado.
+  window.__couponView = null;
+  window.__descontoView = 0;
+  window.__waCouponLine = "";
+  const valorFinal = valor;
 
   clearInvalid(document.getElementById('origem'));
   clearInvalid(document.getElementById('destino'));
@@ -1335,6 +1405,8 @@ async function finalizarOrcamentoComKm(kmInt, paradasValidas, servico, totalMete
   showResumoMapsLink(pointsForLink[0], pointsForLink.slice(1));
 
   const destinoTexto = destinoPlace?.formatted_address || (paradasValidas.length ? paradasValidas[paradasValidas.length - 1]?.formatted_address : "");
+  setSummaryAddress("summaryOrigin", origemPlace?.formatted_address || "", "Retirada", "");
+  setSummaryAddress("summaryDestination", destinoTexto, "Entrega", "");
 
   // 1) monta link do Whats (sem comprovante) para a UI não travar
   const btnWhats = getBtnWhats();
@@ -1350,7 +1422,7 @@ async function finalizarOrcamentoComKm(kmInt, paradasValidas, servico, totalMete
   );
   if (btnWhats) btnWhats.href = `https://api.whatsapp.com/send?phone=${WHATS_NUM}&text=${textoURL}`;
 
-  mostrarWhats(); pulseWhats();
+  mostrarWhats();
   scrollToMetrics();
   lastQuote = { hasQuote: true, servico, motoTipo: servico === "moto" ? (document.getElementById("motoTipo")?.value || "") : null };
 
@@ -1429,41 +1501,42 @@ function initDirectionsOnce() {
 function renderResumoOtimizacao(result) {
   const el = document.getElementById("otimizacaoResumo");
   if (!el) return;
+
   const legs = result?.routes?.[0]?.legs || [];
   const totalKm = legs.reduce((acc, l) => acc + (l.distance?.value || 0), 0) / 1000;
-  const totalMin = Math.round(legs.reduce((acc, l) => acc + (l.duration?.value || 0), 0) / 60);
 
   const itens = [];
-  itens.push(`<li><b>Retirada</b>: ${origemPlace?.formatted_address || placeToLatLngStr(origemPlace) || "(sem endereço)"}</li>`);
+  itens.push(`<li><span class="opt-step opt-start">1</span><div><b>Retirada</b><small>${origemPlace?.formatted_address || placeToLatLngStr(origemPlace) || "(sem endereço)"}</small></div></li>`);
   paradasPlaces.forEach((p, i) => {
     const texto = p?.formatted_address || placeToLatLngStr(p) || "(sem endereço)";
-    itens.push(`<li><b>Parada ${i+1}</b>: ${texto}</li>`);
+    itens.push(`<li><span class="opt-step">${i + 2}</span><div><b>Parada ${i + 1}</b><small>${texto}</small></div></li>`);
   });
   if (destinoPlace) {
     const texto = destinoPlace.formatted_address || placeToLatLngStr(destinoPlace) || "(sem endereço)";
-    itens.push(`<li><b>Entrega</b>: ${texto}</li>`);
+    itens.push(`<li><span class="opt-step opt-end">${itens.length + 1}</span><div><b>Entrega</b><small>${texto}</small></div></li>`);
   }
 
   const orderedForLink = [...paradasPlaces];
   if (destinoPlace) orderedForLink.push(destinoPlace);
-
   const link = buildGmapsDirLink(origemPlace, orderedForLink);
 
   el.innerHTML = `
-    <div class="card">
-      <div class="card-title">Rota otimizada</div>
-      <ul>${itens.join("")}</ul>
-      <p><b>Total estimado:</b> ~${isFinite(totalKm) ? totalKm.toFixed(1) : "—"} km • ~${isFinite(totalMin) ? totalMin : "—"} min</p>
-      <p><a href="${link}" target="_blank" rel="noopener">Abrir no Google Maps</a></p>
-      <div style="margin-top:10px">
-        <button id="btnCalcularOt" type="button" class="primary">Calcular rota otimizada</button>
+    <div class="optimization-head">
+      <div>
+        <span class="optimization-kicker">ORDEM SUGERIDA</span>
+        <strong>Rota otimizada encontrada</strong>
       </div>
-      <small>Obs.: a navegação considera trânsito em tempo real no app do Maps.</small>
-    </div>`;
+      <span class="optimization-distance">${isFinite(totalKm) ? totalKm.toFixed(1).replace('.', ',') : "—"} km</span>
+    </div>
+    <ol class="optimization-list">${itens.join("")}</ol>
+    <div class="optimization-actions">
+      <a href="${link}" target="_blank" rel="noopener" class="optimization-maps">↗ Ver rota no Google Maps</a>
+      <button id="btnCalcularOt" type="button" class="optimization-calc">Calcular com esta rota</button>
+    </div>
+    <small class="optimization-disclaimer">A otimização reorganiza os endereços para buscar uma sequência mais eficiente. Não exibimos promessa de tempo de entrega.</small>`;
   el.style.display = "block";
 
   showResumoMapsLink(origemPlace, orderedForLink);
-
   document.getElementById("btnCalcularOt")?.addEventListener("click", calcularRotaOtimizada);
 }
 
@@ -1495,14 +1568,14 @@ function aplicarOrdemOtimizadaNosInputs(ordered) {
   document.querySelectorAll('[id^="parada-"]').forEach(clearInvalid);
 }
 
-// === cálculo pela ordem otimizada (força Bau/Food quando Moto)
+// === cálculo pela ordem otimizada (mantém Moto como Baú)
 async function calcularRotaOtimizada() {
   const servicoSel  = document.getElementById("servico");
   const servico = servicoSel?.value || "";
   const tipoMoto = document.getElementById("motoTipo")?.value || "";
 
   if (servico === "moto" && !tipoMoto) {
-    markInvalid(document.getElementById("motoTipo"), "Selecione Baú ou FOOD.");
+    markInvalid(document.getElementById("motoTipo"), "Selecione o tipo de veículo.");
     document.getElementById("motoTipo")?.focus();
     return;
   } else {
@@ -1769,10 +1842,7 @@ const DeodatoCoupon = (() => {
 
     getSegmentKey: () => {
       const servico = document.getElementById("servico")?.value || "";
-      if (servico === "moto") {
-        const tipo = document.getElementById("motoTipo")?.value || "";
-        return tipo ? `moto.${tipo}` : 'moto';
-      }
+      if (servico === "moto") return 'moto.bau';
       return servico || 'todos';
     },
 
@@ -1813,13 +1883,12 @@ const DeodatoCoupon = (() => {
         const origemTxt  = origemPlace?.formatted_address || "";
         const destinoTxt = destinoPlace?.formatted_address
           || (paradasPlaces.length ? paradasPlaces[paradasPlaces.length - 1]?.formatted_address : "");
-        const kmTxt = document.getElementById("mDist")?.textContent || "";
+        const kmTxt = (document.getElementById("mDist")?.textContent || "").replace(/\s*km\s*$/i, "");
 
         const servSel = document.getElementById("servico")?.value || "";
-        const tipo    = document.getElementById("motoTipo")?.value || "";
         let servicoTxt = "";
         if (servSel === "carro") servicoTxt = "*_Carro_*";
-        else if (servSel === "moto") servicoTxt = (tipo === "food") ? "*_Moto — (Somente mochila térmica)_*" : "*_Moto — Baú_*";
+        else if (servSel === "moto") servicoTxt = "*_Moto — Baú_*";
         else if (servSel === "fiorino") servicoTxt = "*_Fiorino_*";
         else if (servSel === "hr_ducato") servicoTxt = "*_HR / Ducato_*";
         else if (servSel === "iveco_master") servicoTxt = "*_Iveco / Master_*";
@@ -1838,7 +1907,7 @@ const DeodatoCoupon = (() => {
         );
         btn.href = `https://api.whatsapp.com/send?phone=${WHATS_NUM}&text=${textoURL}`;
 
-        if (btn.getAttribute('aria-disabled') === 'true') {
+        if (btn.getAttribute('aria-disabled') === 'true' && lastQuote.hasQuote) {
           try { mostrarWhats(); } catch {}
         }
       } catch {}
@@ -1956,30 +2025,64 @@ const DeodatoCoupon = (() => {
 function initOrcamento() {
   ensureMotoTipoControl();
   configurarAutocomplete();
-  ensureOptimizeUI();
+  initVehicleCards();
   ensureBackToTopUI();
   configurarEventos();
+  atualizarVisibilidadeOtimizacao();
+  resetVisualSummary();
   esconderWhats();
 }
-// --- Exposição global com proteção contra dupla-execução e fallback ---
-(function () {
-  // guarda a função real
-  const realInit = initOrcamento;
+// Deixa a parte visual pronta mesmo antes do carregamento completo do Google Maps.
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => { initVehicleCards(); resetVisualSummary(); esconderWhats(); }, { once: true });
+} else {
+  initVehicleCards(); resetVisualSummary(); esconderWhats();
+}
 
-  // flag global para não inicializar duas vezes
+// --- Inicialização robusta do Google Maps / Places ---
+(function () {
+  const realInit = initOrcamento;
   window.__booted = window.__booted || false;
 
-  // callback que o Google Maps chama
-  window.initOrcamento = function () {
-    if (window.__booted) return;
+  function mapsReady() {
+    return !!(window.google && google.maps && google.maps.places && google.maps.DirectionsService && google.maps.Geocoder);
+  }
+
+  function boot() {
+    if (window.__booted || !mapsReady()) return false;
     window.__booted = true;
-    try { realInit(); } catch (e) { console.error(e); }
+    try {
+      realInit();
+      console.info("Deodato: Google Maps/Places inicializado.");
+      return true;
+    } catch (e) {
+      window.__booted = false;
+      console.error("Deodato: falha ao inicializar o Google Maps/Places.", e);
+      return false;
+    }
+  }
+
+  // O HTML já cria este callback antes de carregar o SDK. Isso evita corrida:
+  // se o Maps carregar antes do app.js, a flag fica guardada e iniciamos aqui.
+  window.__deodatoBoot = boot;
+  window.initOrcamento = function () {
+    window.__deodatoMapsReady = true;
+    boot();
   };
 
-  // fallback: se o Maps já estiver pronto (ex.: ao dar F5) e o callback não disparar,
-  // inicializa manualmente
-  if (window.google && google.maps) {
-    setTimeout(() => window.initOrcamento(), 0);
+  if (window.__deodatoMapsReady || mapsReady()) {
+    setTimeout(boot, 0);
   }
-})();
 
+  // Fallback adicional para F5/cache/ordem de carregamento.
+  let tentativas = 0;
+  const timer = setInterval(() => {
+    tentativas += 1;
+    if (boot() || window.__booted || tentativas >= 100) {
+      clearInterval(timer);
+      if (!window.__booted && tentativas >= 100) {
+        console.error("Deodato: o Google Maps não carregou. Verifique a chave/API e o Console do navegador.");
+      }
+    }
+  }, 100);
+})();

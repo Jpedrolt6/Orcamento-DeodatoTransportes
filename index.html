@@ -2,199 +2,238 @@
 <html lang="pt-br">
 <head>
   <meta charset="utf-8" />
-  <title>Orçamento Transportadora</title>
+  <title>Deodato Transportes — Calcule seu frete</title>
+  <meta name="description" content="Frete rápido e confiável para sua empresa. Atendemos São Paulo, região metropolitana, interior, litoral e viagens para outros estados sob consulta." />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
-  <!-- evita 404 do favicon -->
   <link rel="icon" href="data:,">
 </head>
 <body>
-  <div class="wrap">
-    <header class="hero glass">
-      <div class="brand">
-        <div class="logo">📦</div>
-        <div class="title">
-          <h1>Deodato Transportes</h1>
-          <p>Orçamento rápido com endereços do Google</p>
+  <header class="site-header">
+    <div class="page-shell header-inner">
+      <a class="brand" href="#" aria-label="Deodato Transportes">
+        <span class="brand-mark" aria-hidden="true">
+          <i></i><i></i><i></i>
+        </span>
+        <span class="brand-copy">
+          <strong>DEODATO</strong>
+          <small>TRANSPORTES</small>
+        </span>
+      </a>
+
+      <a class="header-whatsapp" href="https://api.whatsapp.com/send?phone=5511983297840&text=Ol%C3%A1%21%20Gostaria%20de%20solicitar%20um%20frete." target="_blank" rel="noopener" aria-label="Falar com a Deodato Transportes no WhatsApp">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20.5 11.7a8.5 8.5 0 0 1-12.55 7.45L3 20.5l1.4-4.8A8.5 8.5 0 1 1 20.5 11.7Z"/>
+          <path d="M8.1 7.8c.2-.45.42-.46.65-.47h.55c.17 0 .35.05.45.3l.8 1.9c.08.22.04.42-.12.62l-.62.72c-.12.14-.1.3-.02.46.55 1.05 1.38 1.88 2.42 2.43.17.08.32.1.46-.02l.73-.62c.2-.16.4-.2.61-.12l1.92.8c.24.1.29.28.3.45v.55c-.01.23-.03.45-.48.65-.42.2-1.36.37-2.27.07-1.16-.38-2.65-1.28-3.92-2.55-1.27-1.27-2.17-2.76-2.55-3.92-.3-.91-.13-1.85.07-2.27Z"/>
+        </svg>
+        <span>Falar no WhatsApp</span>
+      </a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero-section">
+      <div class="page-shell hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">DEODATO TRANSPORTES</p>
+          <h1>Frete rápido e confiável para sua empresa</h1>
+          <p class="hero-description">
+            Soluções de transporte sob demanda com agilidade, segurança e o melhor custo-benefício.
+            Atendemos São Paulo, região metropolitana, interior, litoral e viagens para outros estados sob consulta.
+          </p>
+          <p class="coverage-line">
+            <span class="coverage-icon" aria-hidden="true">✓</span>
+            Atendemos capital, interior, litoral e região metropolitana
+          </p>
+
+          <div class="bridge-art" aria-hidden="true">
+            <svg viewBox="0 0 640 260" role="presentation">
+              <g class="city">
+                <rect x="0" y="185" width="42" height="75" rx="2" />
+                <rect x="48" y="155" width="32" height="105" rx="2" />
+                <rect x="88" y="198" width="50" height="62" rx="2" />
+                <rect x="146" y="142" width="38" height="118" rx="2" />
+                <rect x="193" y="174" width="54" height="86" rx="2" />
+                <rect x="510" y="176" width="46" height="84" rx="2" />
+                <rect x="566" y="151" width="34" height="109" rx="2" />
+                <rect x="608" y="196" width="32" height="64" rx="2" />
+              </g>
+              <g class="bridge">
+                <path d="M320 24 L304 260 M320 24 L340 260" />
+                <path d="M312 74 L132 260 M314 94 L174 260 M316 116 L218 260 M318 139 L260 260" />
+                <path d="M328 74 L508 260 M326 94 L466 260 M324 116 L422 260 M322 139 L380 260" />
+                <path d="M80 238 L560 238" />
+              </g>
+            </svg>
+          </div>
         </div>
-      </div>
-    </header>
 
-    <main class="grid">
-      <section class="card glass">
-        <h2>Endereços</h2>
+        <section class="quote-card" aria-labelledby="quoteTitle">
+          <h2 id="quoteTitle">Calcule seu frete</h2>
 
-        <div class="field">
-  <label for="origem">Retirada</label>
+          <div class="field">
+            <label for="origem">Retirada</label>
+            <div class="input-clear input-with-icon">
+              <span class="field-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.05 6-11a6 6 0 1 0-12 0c0 5.95 6 11 6 11Z"/><circle cx="12" cy="10" r="2.3"/></svg></span>
+              <input id="origem" type="text" placeholder="Digite o endereço de retirada" autocomplete="on">
+              <button class="clear-btn" type="button" data-target="origem" aria-label="Limpar retirada"><span aria-hidden="true">×</span></button>
+            </div>
+          </div>
 
-  <div class="input-clear">
-    <input id="origem" type="text"
-      placeholder="Digite o endereço de retirada"
-      autocomplete="on">
+          <div id="paradas" class="stops-list"></div>
+          <button class="add-stop" id="btnAddParada" type="button">+ Adicionar parada</button>
 
-    <button class="clear-btn" type="button" data-target="origem">
-      ✕
-    </button>
-  </div>
-</div>
+          <div class="field">
+            <label for="destino">Entrega</label>
+            <div class="input-clear input-with-icon">
+              <span class="field-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.05 6-11a6 6 0 1 0-12 0c0 5.95 6 11 6 11Z"/><circle cx="12" cy="10" r="2.3"/></svg></span>
+              <input id="destino" type="text" placeholder="Digite o endereço de entrega" autocomplete="on">
+              <button class="clear-btn" type="button" data-target="destino" aria-label="Limpar entrega"><span aria-hidden="true">×</span></button>
+            </div>
+          </div>
 
-<div id="paradas"></div>
-
-<button class="ghost" id="btnAddParada" type="button">
-  + Adicionar parada
-</button>
-
-<div class="field">
-  <label for="destino">Entrega</label>
-
-  <div class="input-clear">
-    <input id="destino" type="text"
-      placeholder="Digite o endereço de entrega"
-      autocomplete="on">
-
-    <button class="clear-btn" type="button" data-target="destino">
-      ✕
-    </button>
-  </div>
-</div>
-        <div class="row">
-          <div class="field small">
-            <label for="servico">Serviço</label>
-            <select id="servico">
-              <option value="moto">Motoboy</option>
+          <div class="field vehicle-field">
+            <label>Tipo de veículo</label>
+            <select id="servico" class="sr-only" aria-hidden="true" tabindex="-1">
+              <option value="moto">Moto Baú</option>
               <option value="carro">Carro</option>
               <option value="fiorino">Fiorino / Picapes</option>
               <option value="hr_ducato">HR / Ducato</option>
               <option value="iveco_master">Iveco / Master</option>
             </select>
+            <input type="hidden" id="motoTipo" value="bau">
+
+            <div class="vehicle-grid" id="vehicleGrid" role="group" aria-label="Selecione o tipo de veículo">
+              <button class="vehicle-option active" type="button" data-service="moto" aria-pressed="true">
+<img class="vehicle-photo" src="assets/vehicles/moto-bau.png" alt="" aria-hidden="true">
+                <span>Moto Baú</span>
+              </button>
+              <button class="vehicle-option" type="button" data-service="carro" aria-pressed="false">
+<img class="vehicle-photo" src="assets/vehicles/carro.png" alt="" aria-hidden="true">
+                <span>Carro</span>
+              </button>
+              <button class="vehicle-option" type="button" data-service="fiorino" aria-pressed="false">
+<img class="vehicle-photo" src="assets/vehicles/fiorino.png" alt="" aria-hidden="true">
+                <span>Fiorino</span>
+              </button>
+              <button class="vehicle-option" type="button" data-service="hr_ducato" aria-pressed="false">
+<img class="vehicle-photo" src="assets/vehicles/hr-ducato.png" alt="" aria-hidden="true">
+                <span>HR / Ducato</span>
+              </button>
+              <button class="vehicle-option" type="button" data-service="iveco_master" aria-pressed="false">
+<img class="vehicle-photo" src="assets/vehicles/iveco-master.png" alt="" aria-hidden="true">
+                <span>Iveco / Master</span>
+              </button>
+            </div>
           </div>
 
-          <!-- começa escondido; o JS mostra quando "Motoboy" está selecionado -->
-          <div class="field small" id="motoTipoRow" style="display:none">
-            <label for="motoTipo">Tipo (moto)</label>
-            <select id="motoTipo">
-            
-              <option value="bau">Baú</option>
-            
-            </select>
+          <div class="actions route-actions" id="routeActions">
+            <button class="calculate-btn" id="btnCalcular" type="button">
+              <span aria-hidden="true">⌘</span> Calcular rota
+            </button>
+            <button class="optimize-btn" id="btnOtimizar" type="button" hidden>
+              <span aria-hidden="true">↻</span> Rota otimizada
+            </button>
           </div>
+          <p class="optimize-note" id="optimizeNote" hidden>Use <strong>Rota otimizada</strong> quando houver várias paradas. A retirada fica fixa e o sistema organiza a melhor sequência dos demais endereços.</p>
+          <div id="otimizacaoResumo" class="optimization-result" aria-live="polite"></div>
+          <p class="after-calc-note">ⓘ Após calcular, o botão <strong>Solicitar frete</strong> será liberado para continuar pelo WhatsApp.</p>
+        </section>
+
+        <aside class="summary-card" aria-labelledby="summaryTitle">
+          <h2 id="summaryTitle">Resumo da rota</h2>
+
+          <div class="route-preview">
+            <div class="route-point route-origin">
+              <span class="route-dot"></span>
+              <div>
+                <strong id="summaryOrigin">Informe a retirada</strong>
+                <small id="summaryOriginSub">A rota aparecerá aqui</small>
+              </div>
+            </div>
+            <div class="route-line"></div>
+            <div class="route-point route-destination">
+              <span class="route-pin" aria-hidden="true">◆</span>
+              <div>
+                <strong id="summaryDestination">Informe a entrega</strong>
+                <small id="summaryDestinationSub">Depois, clique em calcular rota</small>
+              </div>
+            </div>
+          </div>
+
+          <div class="summary-divider"></div>
+
+          <div id="resumo" class="summary-metrics">
+            <div class="summary-metric">
+              <span class="metric-label">Distância</span>
+              <strong id="mDist">—</strong>
+            </div>
+
+            <div class="summary-metric price-metric">
+              <span class="metric-label">Preço estimado</span>
+              <strong id="mValor">—</strong>
+            </div>
+
+            <a id="resumoLinkMaps" class="maps-route-link" href="#" target="_blank" rel="noopener">
+              ↗ Abrir rota no Google Maps
+            </a>
+
+            <p class="fair-price">♢ Preço claro, sem surpresa no orçamento.</p>
+
+            <a class="whatsapp-cta hide" id="btnWhats" href="#" target="_blank" rel="noopener" aria-disabled="true">
+              Solicitar frete <span aria-hidden="true">→</span>
+            </a>
+
+            <button class="clear-all hide" id="btnLimpar" type="button">Limpar cálculo</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="benefits-section">
+      <div class="page-shell">
+        <h2>Por que escolher a Deodato Transportes?</h2>
+        <div class="benefits-grid">
+          <article class="benefit-card">
+            <div class="benefit-icon" aria-hidden="true">◴</div>
+            <div><h3>Rapidez</h3><p>Entregas ágeis e eficientes para você ganhar tempo no que importa.</p></div>
+          </article>
+          <article class="benefit-card">
+            <div class="benefit-icon" aria-hidden="true">✓</div>
+            <div><h3>Segurança</h3><p>Seus produtos protegidos com motoristas experientes e processos confiáveis.</p></div>
+          </article>
+          <article class="benefit-card">
+            <div class="benefit-icon" aria-hidden="true">☏</div>
+            <div><h3>Atendimento</h3><p>Suporte humano e atencioso sempre que você precisar.</p></div>
+          </article>
         </div>
 
-        <!-- ================= CUPOM DE DESCONTO ================= -->
-        <div class="cupom-box">
-          <label for="couponInput">Cupom de desconto</label>
-          <div class="cupom-row">
-            <input id="couponInput" type="text" placeholder="Digite seu cupom" autocomplete="off" />
-            <button id="applyCouponBtn" type="button">Aplicar</button>
-          </div>
-          <small id="couponMsg"></small>
-        </div>
-        <style>
-          .cupom-box{margin-top:12px}
-          .cupom-row{display:flex;gap:8px}
-          #couponMsg{display:block;margin-top:6px;opacity:.9}
-        </style>
-        <!-- ===================================================== -->
+        <p class="help-line">◉ Precisa de ajuda? Fale com a gente no WhatsApp <strong>(11) 98329-7840</strong></p>
+      </div>
+    </section>
+  </main>
 
-        <div class="actions">
-          <button class="primary" id="btnCalcular" type="button">Calcular</button>
-          <!-- Botão do Whats foi movido para o Resumo -->
-        </div>
-      </section>
+  <footer class="site-footer">
+    <div class="page-shell">© Deodato Transportes — São Paulo • Brasil</div>
+  </footer>
 
-      <aside class="card glass">
-        <h2>Resumo</h2>
-        <div id="resumo" class="resumo">
-          <!-- DISTÂNCIA -->
-          <div class="metric">
-            <span class="lbl">Distância</span>
-            <span class="val" id="mDist">—</span>
-          </div>
-
-          <!-- CUPOM (entre Distância e Valor) -->
-          <div id="resumoCupomCard" class="resumo-pill" style="display:none;">
-            <span>Cupom</span>
-            <strong id="resumoCupomValue">-</strong>
-          </div>
-
-          <!-- estilo do pill -->
-          <style>
-            .resumo-pill{
-              background: rgba(255,255,255,0.06);
-              border-radius: 12px;
-              padding: 10px 14px;
-              display: flex; justify-content: space-between; align-items: center;
-              margin: 8px 0;
-            }
-            #resumoCupomCard strong{ font-weight: 700; }
-          </style>
-
-          <!-- VALOR -->
-          <div class="metric">
-            <span class="lbl">Valor</span>
-            <span class="val" id="mValor">—</span>
-          </div>
-
-          <div class="rules">
-            <h3>Regras do serviço</h3>
-            <ul>
-              <li>Baú máx.: 44 × 42 × 32 cm</li>
-              <li>Peso máx.: 20 kg</li>
-              <li>Espera: R$ 0,60/min após 15 min</li>
-            </ul>
-          </div>
-
-          <!-- Aparece só após cálculo OK -->
-          <a class="cta wa hide" id="btnWhats" href="#" target="_blank" rel="noopener">Enviar Orçamento no WhatsApp</a>
-
-          <button class="outline" id="btnLimpar" type="button">Limpar tudo</button>
-        </div>
-      </aside>
-    </main>
-
-    <footer class="foot">
-      <p>© Deodato Transportes — São Paulo • Brasil</p>
-    </footer>
-  </div>
-
-  <!-- 1) Seu app primeiro -->
-  <script src="app.js?v=14" defer></script>
-
-  <!-- 2) Callback global robusto (evita condição de corrida no reload) -->
+  <!-- Callback criado ANTES do SDK do Google. Evita falha de inicialização por ordem/cache. -->
   <script>
-    (function () {
-      let started = false;
-
-      function mapsReady() {
-        return !!(window.google && google.maps && google.maps.places);
-      }
-
-      function tryStart() {
-        if (started) return;
-        if (typeof window.initApp === "function" && mapsReady()) {
-          started = true;
-          try { window.initApp(); } catch (e) { console.error(e); }
-        } else {
-          setTimeout(tryStart, 50);
-        }
-      }
-
-      // chamado pelo ?callback=initOrcamento
-      window.initOrcamento = function () {
-        tryStart();
-      };
-
-      // fallback extra caso o callback não dispare por algum motivo
-      document.addEventListener("DOMContentLoaded", tryStart);
-    })();
+    window.__deodatoMapsReady = false;
+    window.initOrcamento = function () {
+      window.__deodatoMapsReady = true;
+      if (typeof window.__deodatoBoot === "function") window.__deodatoBoot();
+    };
   </script>
 
-  <!-- 3) Loader do Maps com Places e callback -->
+  <script src="app.js?v=18" defer></script>
   <script
     async defer
     referrerpolicy="origin"
+    onerror="console.error('Deodato: falha ao carregar o SDK do Google Maps.')"
     src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAhGvrR_Gp4e0ROB1BInjNBSUQdHEh6ews&libraries=places&v=weekly&loading=async&language=pt-BR&region=BR&callback=initOrcamento">
   </script>
 </body>
