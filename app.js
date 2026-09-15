@@ -907,41 +907,145 @@ function adicionarParadaInput() {
   setupInputAutocomplete({ inputEl: input, onPlaceChosen: (place) => { paradasPlaces[idx] = place; } });
 }
 
-// ===================== Regras do serviço (UI dinâmica) =====================
-function hideRules() {
-  const rules = document.querySelector('.rules'); if (!rules) return;
-  const ul = rules.querySelector('ul'); if (ul) ul.innerHTML = "";
-  rules.style.display = 'none';
+// ===================== Informações do veículo (UI dinâmica) =====================
+// A Moto Baú já inicia selecionada no layout, então as informações do veículo
+// selecionado também devem aparecer imediatamente ao abrir a página.
+let vehicleInfoUnlocked = true;
+
+const VEHICLE_INFO = {
+  moto: {
+    name: "Moto Baú",
+    rows: [
+      { icon: "box",    label: "Baú máximo", value: "44 × 42 × 32 cm" },
+      { icon: "weight", label: "Peso máximo", value: "20 kg" },
+      { icon: "doc",    label: "Ideal para", value: "documentos, eletrônicos, roupas e pequenas encomendas" },
+      { icon: "clock",  label: "Taxa de espera", value: "R$ 0,60/min após 15 min" }
+    ]
+  },
+  carro: {
+    name: "Carro",
+    rows: [
+      { icon: "doc",   label: "Ideal para", value: "caixas pequenas e médias, acima da capacidade da moto" },
+      { icon: "clock", label: "Taxa de espera", value: "R$ 0,70/min após 20 min" }
+    ]
+  },
+  fiorino: {
+    name: "Fiorino",
+    rows: [
+      { icon: "doc",    label: "Ideal para", value: "cargas fracionadas de médio porte" },
+      { icon: "weight", label: "Capacidade indicada", value: "até 600 kg" },
+      { icon: "box",    label: "Dimensões máximas", value: "1,35 m alt. × 1,10 m larg. × 1,85 m comp." },
+      { icon: "weight", label: "Peso máximo", value: "600 kg" },
+      { icon: "clock",  label: "Taxa de espera", value: "R$ 0,80/min após 20 min" }
+    ]
+  },
+  hr_ducato: {
+    name: "HR / Ducato",
+    rows: [
+      { icon: "doc",    label: "Ideal para", value: "cargas volumosas em quantidade intermediária" },
+      { icon: "box",    label: "Dimensões máximas", value: "1,90 m alt. × 1,40 m larg. × 2,50 m comp." },
+      { icon: "weight", label: "Peso máximo", value: "1.500 kg" },
+      { icon: "clock",  label: "Taxa de espera", value: "R$ 1,20/min após 30 min" }
+    ]
+  },
+  iveco_master: {
+    name: "Iveco / Master",
+    rows: [
+      { icon: "doc",    label: "Ideal para", value: "operações maiores em centros urbanos com restrição de caminhões" },
+      { icon: "box",    label: "Capacidade volumétrica", value: "10–15 m³" },
+      { icon: "weight", label: "Peso máximo", value: "2.300 kg" },
+      { icon: "clock",  label: "Taxa de espera", value: "R$ 1,20/min após 30 min" }
+    ]
+  }
+};
+
+function vehicleInfoIcon(type) {
+  const icons = {
+    box: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>`,
+    weight: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 7.5a3.5 3.5 0 1 1 7 0"/><path d="M6.5 7.5h11l2 13h-15l2-13Z"/></svg>`,
+    doc: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6V3Z"/><path d="M15 3v4h4M9 11h6M9 15h6"/></svg>`,
+    clock: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`
+  };
+  return icons[type] || icons.doc;
 }
-function showRules(htmlList) {
-  const rules = document.querySelector('.rules'); if (!rules) return;
-  const ul = rules.querySelector('ul'); if (!ul) return;
-  ul.innerHTML = htmlList; rules.style.display = '';
+
+function hideVehicleInfo() {
+  const box = document.getElementById("vehicleInfoBox");
+  if (box) box.hidden = true;
 }
+
+function isVehicleSummaryRow(row) {
+  const label = String(row?.label || "").toLowerCase();
+  return label.includes("baú máximo") ||
+         label.includes("dimensões máximas") ||
+         label.includes("capacidade volumétrica") ||
+         label.includes("peso máximo");
+}
+
+function setVehicleInfoExpanded(expanded) {
+  const box = document.getElementById("vehicleInfoBox");
+  const toggle = document.getElementById("vehicleInfoToggle");
+  if (!box || !toggle) return;
+
+  box.classList.toggle("is-expanded", !!expanded);
+  toggle.setAttribute("aria-expanded", String(!!expanded));
+
+  const text = toggle.querySelector(".vehicle-info-toggle-text");
+  if (text) text.textContent = expanded ? "Ocultar" : "Ver mais";
+}
+
 function updateRules() {
   const servico = document.getElementById("servico")?.value || "";
+  const box = document.getElementById("vehicleInfoBox");
+  const nameEl = document.getElementById("vehicleInfoName");
+  const rowsEl = document.getElementById("vehicleInfoRows");
+  const toggle = document.getElementById("vehicleInfoToggle");
+  const info = VEHICLE_INFO[servico];
 
-  if (servico === "moto") {
-    showRules(`<li>Baú máx.: 44 × 42 × 32 cm</li><li>Peso máx.: 20 kg</li><li>Ideal para documentos, eletrônicos, roupas e pequenas encomendas</li><li>Espera: R$ 0,60/min após 15 min</li>`);
+  if (!box || !nameEl || !rowsEl || !vehicleInfoUnlocked || !info) {
+    hideVehicleInfo();
     return;
   }
-  if (servico === "carro") {
-    showRules(`<li>Ideal para caixas pequenas e médias, acima da capacidade da moto</li><li>Espera: R$ 0,70/min após 20 min</li>`);
-    return;
+
+  nameEl.textContent = info.name;
+
+  let detailCount = 0;
+  rowsEl.innerHTML = info.rows.map(row => {
+    const summary = isVehicleSummaryRow(row);
+    if (!summary) detailCount += 1;
+    return `
+      <div class="vehicle-info-row ${summary ? "vehicle-info-row-summary" : "vehicle-info-row-detail"}">
+        <span class="vehicle-info-row-icon" aria-hidden="true">${vehicleInfoIcon(row.icon)}</span>
+        <p><strong>${row.label}:</strong> <span>${row.value}</span></p>
+      </div>
+    `;
+  }).join("");
+
+  if (toggle) {
+    toggle.hidden = detailCount === 0;
+    setVehicleInfoExpanded(false);
   }
-  if (servico === "fiorino") {
-    showRules(`<li>Ideal para cargas fracionadas de médio porte</li><li>Melhor custo-benefício para cargas de até 600 kg</li><li>Dimensões máx.: 1,35 m alt. × 1,10 m larg. × 1,85 m comp.</li><li>Peso máx.: 600 kg</li><li>Espera: R$ 0,80/min após 20 min</li>`);
-    return;
-  }
-  if (servico === "hr_ducato") {
-    showRules(`<li>Pequeno caminhão / ideal para cargas volumosas em quantidade intermediária</li><li>Dimensões máx.: 1,90 m alt. × 1,40 m larg. × 2,50 m comp.</li><li>Peso máx.: 1500 kg</li><li>Espera: R$ 1,20/min após 30 min</li>`);
-    return;
-  }
-  if (servico === "iveco_master") {
-    showRules(`<li>Ideal para operações maiores em centros urbanos com restrição de caminhões</li><li>Capacidade volumétrica 10-15 m³</li><li>Peso máx.: 2300 kg</li><li>Espera: R$ 1,20/min após 30 min</li>`);
-    return;
-  }
-  hideRules();
+
+  box.hidden = false;
+}
+
+function bindVehicleInfoToggle() {
+  const toggle = document.getElementById("vehicleInfoToggle");
+  const box = document.getElementById("vehicleInfoBox");
+  if (!toggle || !box || toggle.dataset.bound === "1") return;
+
+  toggle.dataset.bound = "1";
+  toggle.addEventListener("click", () => {
+    const expanded = !box.classList.contains("is-expanded");
+    setVehicleInfoExpanded(expanded);
+
+    // Ao abrir as regras, conduz o cliente diretamente ao conteúdo em qualquer tela.
+    if (expanded) {
+      window.requestAnimationFrame(() => {
+        box.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  });
 }
 
 // ===================== Botão Whats — helpers =====================
@@ -1103,6 +1207,7 @@ function initVehicleCards() {
 
   buttons.forEach(btn => {
     btn.addEventListener("click", () => {
+      vehicleInfoUnlocked = true;
       select.value = btn.dataset.service || "moto";
       const motoTipo = document.getElementById("motoTipo");
       if (motoTipo) motoTipo.value = "bau";
@@ -1233,6 +1338,7 @@ function configurarEventos() {
 
     esconderWhats();
     origemInput?.focus();
+    vehicleInfoUnlocked = true;
     updateRules();
     lastQuote = { hasQuote: false, servico: null, motoTipo: null };
 
@@ -2025,6 +2131,7 @@ const DeodatoCoupon = (() => {
 function initOrcamento() {
   ensureMotoTipoControl();
   configurarAutocomplete();
+  bindVehicleInfoToggle();
   initVehicleCards();
   ensureBackToTopUI();
   configurarEventos();
@@ -2034,9 +2141,9 @@ function initOrcamento() {
 }
 // Deixa a parte visual pronta mesmo antes do carregamento completo do Google Maps.
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", () => { initVehicleCards(); resetVisualSummary(); esconderWhats(); }, { once: true });
+  document.addEventListener("DOMContentLoaded", () => { bindVehicleInfoToggle(); initVehicleCards(); updateRules(); resetVisualSummary(); esconderWhats(); }, { once: true });
 } else {
-  initVehicleCards(); resetVisualSummary(); esconderWhats();
+  bindVehicleInfoToggle(); initVehicleCards(); updateRules(); resetVisualSummary(); esconderWhats();
 }
 
 // --- Inicialização robusta do Google Maps / Places ---

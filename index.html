@@ -23,7 +23,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="styles.css?v=8" />
+  <link rel="stylesheet" href="styles.css?v=12" />
   <link rel="icon" href="data:,">
 
   <script type="application/ld+json">
@@ -188,6 +188,7 @@
                 <span>Iveco / Master</span>
               </button>
             </div>
+
           </div>
 
           <div class="actions route-actions" id="routeActions">
@@ -248,6 +249,25 @@
             </a>
 
             <button class="clear-all hide" id="btnLimpar" type="button">Limpar cálculo</button>
+
+            <section id="vehicleInfoBox" class="vehicle-info-box summary-vehicle-info" hidden aria-live="polite" aria-label="Informações do veículo selecionado">
+              <div class="vehicle-info-heading">
+                <span class="vehicle-info-symbol" aria-hidden="true">i</span>
+                <div>
+                  <strong>Informações do veículo</strong>
+                  <span id="vehicleInfoName" class="vehicle-info-name"></span>
+                </div>
+              </div>
+
+              <button id="vehicleInfoToggle" class="vehicle-info-toggle" type="button" aria-expanded="false" hidden>
+                <span class="vehicle-info-toggle-text">Ver mais</span>
+                <span class="vehicle-info-toggle-chevron" aria-hidden="true">⌄</span>
+              </button>
+
+              <div id="vehicleInfoRows" class="vehicle-info-rows"></div>
+
+              <p class="vehicle-info-note">ⓘ As informações mudam conforme o veículo selecionado.</p>
+            </section>
           </div>
         </aside>
       </div>
@@ -289,7 +309,7 @@
     };
   </script>
 
-  <script src="app.js?v=18" defer></script>
+  <script src="app.js?v=22" defer></script>
   <script
     async defer
     referrerpolicy="origin"
