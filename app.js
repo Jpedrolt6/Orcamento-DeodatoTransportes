@@ -1050,6 +1050,29 @@ function bindVehicleInfoToggle() {
 
 // ===================== Botão Whats — helpers =====================
 function getBtnWhats() { return document.getElementById("btnWhats"); }
+function bindGoogleAdsWhatsConversion() {
+  const btnWhats = getBtnWhats();
+
+  if (!btnWhats || btnWhats.dataset.googleAdsBound === "1") return;
+
+  btnWhats.dataset.googleAdsBound = "1";
+
+  btnWhats.addEventListener("click", () => {
+    // Só registra se o botão estiver realmente liberado após uma cotação
+    if (
+      btnWhats.getAttribute("aria-disabled") === "true" ||
+      btnWhats.classList.contains("hide")
+    ) {
+      return;
+    }
+
+    if (typeof window.gtag === "function") {
+      window.gtag("event", "conversion", {
+        send_to: "AW-16878997102/aMlMCIj4x_0cEO6cxPA-"
+      });
+    }
+  });
+}
 function esconderWhats() {
   const btnWhats = getBtnWhats();
   const btnLimpar = document.getElementById("btnLimpar");
@@ -2132,6 +2155,7 @@ function initOrcamento() {
   ensureMotoTipoControl();
   configurarAutocomplete();
   bindVehicleInfoToggle();
+  bindGoogleAdsWhatsConversion();
   initVehicleCards();
   ensureBackToTopUI();
   configurarEventos();
