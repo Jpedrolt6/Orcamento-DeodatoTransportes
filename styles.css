@@ -523,3 +523,277 @@ input.is-invalid,select.is-invalid{border-color:#e34d4d!important;box-shadow:0 0
     scroll-margin-top:76px;
   }
 }
+
+
+/* ==========================================================
+   v14 — Prova social no topo
+   Desktop: avaliações + fotos reais dos serviços.
+   Mobile: mantido exatamente como na v13.
+   ========================================================== */
+.desktop-only{display:block}
+.mobile-only{display:none}
+
+.hero-proof-card{
+  position:relative;
+  z-index:2;
+  width:min(100%,430px);
+  margin-top:22px;
+  padding:17px 18px 16px;
+  border:1px solid #e3e9f0;
+  border-radius:15px;
+  background:rgba(255,255,255,.96);
+  box-shadow:0 12px 32px rgba(19,39,70,.09);
+}
+.hero-proof-header strong{
+  display:block;
+  margin:0;
+  color:var(--navy);
+  font-size:16px;
+  line-height:1.2;
+  font-weight:800;
+  letter-spacing:-.25px;
+}
+.hero-proof-header p{
+  margin:3px 0 0;
+  color:#617188;
+  font-size:11.5px;
+  line-height:1.4;
+}
+.hero-proof-rating{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin-top:10px;
+  min-width:0;
+}
+.google-badge,
+.proof-google-mini{
+  display:inline-grid;
+  place-items:center;
+  color:#4285f4;
+  background:#fff;
+  border:1px solid #dce4ee;
+  font-weight:800;
+  font-family:Arial,sans-serif;
+}
+.google-badge{
+  width:21px;
+  height:21px;
+  flex:0 0 21px;
+  border-radius:50%;
+  font-size:12px;
+}
+.hero-proof-score{
+  color:var(--navy);
+  font-size:13px;
+  font-weight:800;
+}
+.hero-proof-stars{
+  color:#ff6500;
+  font-size:13px;
+  line-height:1;
+  letter-spacing:.5px;
+  white-space:nowrap;
+}
+.hero-proof-count{
+  color:#758399;
+  font-size:10.5px;
+  font-weight:600;
+  white-space:nowrap;
+}
+
+.hero-proof-gallery-wrap{
+  margin-top:10px;
+}
+.hero-proof-gallery-label{
+  display:block;
+  margin:0 0 5px;
+  color:#718097;
+  font-size:9.5px;
+  line-height:1.2;
+  font-weight:600;
+}
+.hero-proof-gallery{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:6px;
+}
+.hero-proof-gallery img{
+  display:block;
+  width:100%;
+  aspect-ratio:1.48/1;
+  object-fit:cover;
+  border-radius:7px;
+  border:1px solid #e2e8f0;
+  background:#eef2f6;
+}
+
+.hero-proof-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin-top:12px;
+}
+.proof-btn{
+  min-height:40px;
+  padding:0 12px;
+  border-radius:9px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  text-align:center;
+  text-decoration:none;
+  font-size:10.5px;
+  line-height:1.15;
+  font-weight:800;
+  transition:transform .15s ease,box-shadow .15s ease,background .15s ease,border-color .15s ease;
+}
+.proof-btn:hover{transform:translateY(-1px)}
+.proof-btn--google{
+  border:1px solid #ff6a1a;
+  color:var(--navy);
+  background:#fff;
+}
+.proof-btn--google:hover{
+  background:#fffaf7;
+  box-shadow:0 7px 16px rgba(255,90,0,.08);
+}
+.proof-google-mini{
+  width:18px;
+  height:18px;
+  flex:0 0 18px;
+  border-radius:50%;
+  font-size:10px;
+}
+.proof-btn--whatsapp{
+  border:1px solid var(--orange);
+  color:#fff;
+  background:var(--orange);
+  box-shadow:0 8px 17px rgba(255,90,0,.18);
+}
+.proof-btn--whatsapp:hover{background:var(--orange-dark);border-color:var(--orange-dark)}
+.proof-whatsapp-icon{
+  width:17px;
+  height:17px;
+  flex:0 0 17px;
+  fill:currentColor;
+}
+
+.mobile-proof-strip{
+  width:100%;
+  min-height:58px;
+  border:1px solid #e0e7ef;
+  border-radius:12px;
+  background:#fff;
+  box-shadow:0 7px 20px rgba(19,39,70,.06);
+  align-items:stretch;
+  overflow:hidden;
+}
+.mobile-proof-item{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  padding:7px 8px;
+  border-right:1px solid #e7ecf2;
+  color:#344b6a;
+  font-size:9.5px;
+  line-height:1.15;
+  font-weight:700;
+}
+.mobile-proof-rating{justify-content:flex-start}
+.mobile-google-badge{
+  width:21px;
+  height:21px;
+  flex:0 0 21px;
+  display:grid;
+  place-items:center;
+  border:1px solid #dce4ee;
+  border-radius:50%;
+  background:#fff;
+  color:#4285f4;
+  font-family:Arial,sans-serif;
+  font-size:12px;
+  font-weight:800;
+}
+.mobile-proof-copy{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.mobile-proof-copy strong{
+  color:var(--navy);
+  font-size:10.5px;
+  line-height:1.1;
+  white-space:nowrap;
+}
+.mobile-proof-copy small{
+  color:#ff6500;
+  font-size:8.5px;
+  line-height:1;
+  letter-spacing:.2px;
+  white-space:nowrap;
+}
+.mobile-proof-symbol{
+  width:20px;
+  height:20px;
+  flex:0 0 20px;
+  display:grid;
+  place-items:center;
+  border-radius:6px;
+  background:#eef3f8;
+  color:var(--navy);
+  font-size:12px;
+  font-weight:900;
+}
+.mobile-proof-symbol--orange{
+  background:#fff2ea;
+  color:var(--orange);
+}
+.mobile-proof-link{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:3px;
+  padding:7px 9px;
+  color:#243a58;
+  background:#f9fbfd;
+  text-decoration:none;
+  text-align:center;
+  font-size:9px;
+  line-height:1.1;
+  font-weight:800;
+  white-space:nowrap;
+}
+.mobile-proof-link span{color:var(--orange);font-size:15px;line-height:1}
+
+@media (max-width:640px){
+  .desktop-only{display:none!important}
+  .mobile-only{display:grid!important}
+  .mobile-proof-strip{
+    grid-template-columns:minmax(88px,1.12fr) minmax(64px,.86fr) minmax(63px,.82fr) minmax(72px,.9fr);
+    order:-1;
+    margin:0 0 1px;
+  }
+}
+
+@media (max-width:390px){
+  .mobile-proof-strip{
+    grid-template-columns:minmax(82px,1.1fr) minmax(59px,.82fr) minmax(58px,.8fr) minmax(67px,.88fr);
+  }
+  .mobile-proof-item{gap:4px;padding-left:5px;padding-right:5px;font-size:8.6px}
+  .mobile-proof-copy strong{font-size:9.7px}
+  .mobile-proof-copy small{font-size:7.9px}
+  .mobile-google-badge{width:19px;height:19px;flex-basis:19px;font-size:10px}
+  .mobile-proof-symbol{width:18px;height:18px;flex-basis:18px;font-size:10px}
+  .mobile-proof-link{padding-left:5px;padding-right:5px;font-size:8.4px}
+}
+
+@media (min-width:641px){
+  .desktop-only{display:block!important}
+  .mobile-only{display:none!important}
+}
